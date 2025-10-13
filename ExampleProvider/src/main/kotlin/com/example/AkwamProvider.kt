@@ -7,24 +7,38 @@ import org.jsoup.nodes.Element
 class AkwamProvider : MainAPI() {
     override var mainUrl               = "https://ak.sv"
     override var name                  = "Akwam"
-    override val supportedTypes        = setOf(TvType.Movie, TvType.TvSeries)   // FIX 1
+    override val supportedTypes        = setOf(TvType.Movie, TvType.TvSeries)
     override val hasMainPage           = true
     override var lang                  = "ar"
 
-    /* ---------- 5 rows ---------- */
-    private val rows = listOf(
+    /* ------------------------------------------------------------- */
+    /*  1.  REGISTER EXACT ROWS  (required by CS3 ≥ 2.0)            */
+    /* ------------------------------------------------------------- */
+    override val mainPage = listOf(
+        MainPageRequest("مميزه",  true),   // featured
+        MainPageRequest("افلام",   true),   // movies
+        MainPageRequest("مسلسلات", true),   // series
+        MainPageRequest("تلفزيون", true),   // WWE
+        MainPageRequest("مدبلج",   true)    // dubbed
+    )
+
+    /* ------------- row templates (kept simple) ------------------- */
+    private val rowMap = mapOf(
         "مميزه"  to "${mainUrl}/page/{p}?section=2",
         "افلام"  to "${mainUrl}/movies?page={p}",
         "مسلسلات" to "${mainUrl}/series?page={p}",
-        "تلفزيون" to "${mainUrl}/tvshows?category=28&page={p}",  // WWE
+        "تلفزيون" to "${mainUrl}/tvshows?category=28&page={p}",
         "مدبلج"  to "${mainUrl}/movies?section=1&category=17&page={p}"
     )
 
+    /* ------------------------------------------------------------- */
+    /*  2.  SAFE getMainPage – no more first{} crash                */
+    /* ------------------------------------------------------------- */
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val (name, urlTemp) = rows.first { it.first == request.name }
-        val url = urlTemp.replace("{p}", page.toString())
-        val items = parseRow(url)
-        return newHomePageResponse(name, items)
+        val urlTemp = rowMap[request.name] ?: rowMap.values.first()   // fallback
+        val url     = urlTemp.replace("{p}", page.toString())
+        val items   = parseRow(url)
+        return newHomePageResponse(request.name, items)
     }
 
     private suspend fun parseRow(url: String): List<SearchResponse> {
@@ -32,10 +46,13 @@ class AkwamProvider : MainAPI() {
         return doc.select("div.widget-body div.entry-box").mapNotNull { it.toSearchResult() }
     }
 
-    override suspend fun search(query: String): List<SearchResponse> {
-        val doc = app.get("${mainUrl}/search?q=$query").document
-        return doc.select("div.widget-body div.entry-box").mapNotNull { it.toSearchResult() }
-    }
+    /* ------------------------------------------------------------- */
+    /*  Search / Details / Links  (unchanged)                       */
+    /* ------------------------------------------------------------- */
+    override suspend fun search(query: String) =
+        app.get("${mainUrl}/search?q=$query").document
+           .select("div.widget-body div.entry-box")
+           .mapNotNull { it.toSearchResult() }
 
     override suspend fun load(url: String): LoadResponse {
         val doc = app.get(url).document
@@ -95,9 +112,10 @@ class AkwamProvider : MainAPI() {
         )
         val type = when {
             href.contains("/series")  -> TvType.TvSeries
+            href.contains("/tvshows") -> TvType.TvSeries
             else                      -> TvType.Movie
         }
-        return newMovieSearchResponse(title, href, type) { this.posterUrl = poster }  // FIX 2: no plot here
+        return newMovieSearchResponse(title, href, type) { this.posterUrl = poster }
     }
 
     private fun fixUrl(url: String)  = if (url.startsWith("http")) url else "$mainUrl$url"
