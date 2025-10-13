@@ -12,13 +12,23 @@ class AkwamProvider : MainAPI() {
     override var lang                  = "ar"
 
     /* ------------------------------------------------------------- */
-    /*  Main-page (popular)                                          */
+    /*  3 real rows : latest movies / latest series / dubbed movies  */
     /* ------------------------------------------------------------- */
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val doc = app.get("$mainUrl/page/$page").document
-        val items = doc.select("div.widget-body div.entry-box")
-                       .mapNotNull { it.toSearchResult() }
-        return newHomePageResponse(request.name, items)
+        val dubMovies = parseRow("أفلام مدبلجة", "$mainUrl/movies?section=1&category=17&page=$page")
+        val latestMov = parseRow("أحدث الأفلام", "$mainUrl/movies?page=$page")
+        val latestSer = parseRow("أحدث المسلسلات", "$mainUrl/series?page=$page")
+
+        return newHomePageResponse(
+            listOf(dubMovies, latestMov, latestSer)
+        )
+    }
+
+    private suspend fun parseRow(name: String, url: String): HomePageList {
+        val doc = app.get(url).document
+        val list = doc.select("div.widget-body div.entry-box")
+                      .mapNotNull { it.toSearchResult() }
+        return HomePageList(name, list)
     }
 
     /* ------------------------------------------------------------- */
@@ -31,7 +41,7 @@ class AkwamProvider : MainAPI() {
     }
 
     /* ------------------------------------------------------------- */
-    /*  Details + episodes                                           */
+    /*  Details + episode list                                       */
     /* ------------------------------------------------------------- */
     override suspend fun load(url: String): LoadResponse {
         val doc = app.get(url).document
@@ -42,8 +52,9 @@ class AkwamProvider : MainAPI() {
         val year        = doc.selectFirst("ul.entry-meta li:contains(سنة الإصدار)")
                              ?.text()?.filter { it.isDigit() }?.toIntOrNull()
         val description = doc.selectFirst("div.story")?.text()?.trim()
-        val tags        = doc.select("ul.entry-meta li:contains(التصنيف) a").map { it.text() }
-        val isMovie     = doc.select("div.watch-seasons").isEmpty()
+        val tags        = doc.select("ul.entry-meta li:contains(التصنيف) a")
+                             .map { it.text() }
+        val isMovie     = !doc.select("div.watch-seasons").hasText()
 
         return if (isMovie) {
             newMovieLoadResponse(title, url, TvType.Movie, url) {
@@ -80,7 +91,6 @@ class AkwamProvider : MainAPI() {
     ): Boolean {
         val doc      = app.get(data).document
         val watchUrl = doc.selectFirst("a.watch-btn")?.attr("href") ?: return false
-
         loadExtractor(watchUrl, data, subtitleCallback, callback)
         return true
     }
