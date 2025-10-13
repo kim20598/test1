@@ -7,34 +7,40 @@ import org.jsoup.nodes.Element
 class AkwamProvider : MainAPI() {
     override var mainUrl               = "https://ak.sv"
     override var name                  = "Akwam"
-    override val supportedTypes        = setOf(TvType.Movie, TvType.TvSeries)
+    override val supportedTypes        = setOf(TvType.Movie, TvType.TvSeries, TvType.TvShow)
     override val hasMainPage           = true
     override var lang                  = "ar"
 
     /* ------------------------------------------------------------- */
-    /*  5 rows -> featured / movies / series / WWE / dubbed        */
+    /*  5 rows -> Featured / Movies / Series / WWE-TV / Dubbed     */
     /* ------------------------------------------------------------- */
+    private val rows = listOf(
+        "مميزه"  to "${mainUrl}/page/{p}?section=2",
+        "افلام"  to "${mainUrl}/movies?page={p}",
+        "مسلسلات" to "${mainUrl}/series?page={p}",
+        "تلفزيون" to "${mainUrl}/tvshows?category=28&page={p}",  // WWE
+        "مدبلج"  to "${mainUrl}/movies?section=1&category=17&page={p}"
+    )
+
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val featured = parseRow("مميزه", "$mainUrl/page/$page?section=2")
-        val movies   = parseRow("افلام", "$mainUrl/movies?page=$page")
-        val series   = parseRow("مسلسلات", "$mainUrl/series?page=$page")
-        val wwe      = parseRow("تلفزيون", "$mainUrl/tvshows?category=28&page=$page") // ← WWE only
-        val dubbed   = parseRow("مدبلج", "$mainUrl/movies?section=1&category=17&page=$page")
-        return newHomePageResponse(listOf(featured, movies, series, wwe, dubbed))
+        // CS3 sends request.name = one of our rows -> return only that slice
+        val (rowName, urlTemp) = rows.first { it.first == request.name }
+        val url = urlTemp.replace("{p}", page.toString())
+        val items = parseRow(url)
+        return newHomePageResponse(rowName, items)
     }
 
-    private suspend fun parseRow(name: String, url: String): HomePageList {
+    private suspend fun parseRow(url: String): List<SearchResponse> {
         val doc = app.get(url).document
-        val list = doc.select("div.widget-body div.entry-box")
-                      .mapNotNull { it.toSearchResult() }
-        return HomePageList(name, list)
+        return doc.select("div.widget-body div.entry-box")
+                  .mapNotNull { it.toSearchResult() }
     }
 
     /* ------------------------------------------------------------- */
-    /*  Search                                                       */
+    /*  Search (same as before)                                      */
     /* ------------------------------------------------------------- */
     override suspend fun search(query: String): List<SearchResponse> {
-        val doc = app.get("$mainUrl/search?q=$query").document
+        val doc = app.get("${mainUrl}/search?q=$query").document
         return doc.select("div.widget-body div.entry-box")
                   .mapNotNull { it.toSearchResult() }
     }
@@ -51,7 +57,7 @@ class AkwamProvider : MainAPI() {
                             ?: doc.selectFirst("div.poster img")?.attr("src"))
         val year        = doc.selectFirst("ul.entry-meta li:contains(سنة الإصدار)")
                              ?.text()?.filter { it.isDigit() }?.toIntOrNull()
-        val description = doc.selectFirst("div.story")?.text()?.trim()
+        val description = doc.selectFirst("div.story")?.text()?.trim().orEmpty()
         val tags        = doc.select("ul.entry-meta li:contains(التصنيف) a")
                              .map { it.text() }
         val isMovie     = !doc.select("div.watch-seasons").hasText()
@@ -81,7 +87,7 @@ class AkwamProvider : MainAPI() {
     }
 
     /* ------------------------------------------------------------- */
-    /*  Links – placeholder until real extractor added               */
+    /*  Links – placeholder                                          */
     /* ------------------------------------------------------------- */
     override suspend fun loadLinks(
         data: String,
@@ -96,17 +102,29 @@ class AkwamProvider : MainAPI() {
     }
 
     /* ------------------------------------------------------------- */
-    /*  Helpers                                                      */
+    /*  Helpers – correct type + lazy thumb                          */
     /* ------------------------------------------------------------- */
     private fun Element.toSearchResult(): SearchResponse? {
         val title = selectFirst("h3 a")?.text() ?: return null
         val href  = fixUrl(selectFirst("h3 a")?.attr("href") ?: return null)
-        // FIX: thumbs – lazy-loaded data-src first, fall back to src
+        // lazy thumb
         val poster = fixUrlNull(
             selectFirst("img")?.attr("data-src")
                 ?: selectFirst("img")?.attr("src")
         )
-        return newMovieSearchResponse(title, href, TvType.Movie) { this.posterUrl = poster }
+        // decide type from URL
+        val type = when {
+            href.contains("/tvshows") -> TvType.TvShow
+            href.contains("/series")  -> TvType.TvSeries
+            else                      -> TvType.Movie
+        }
+        // small plot snippet (optional)
+        val plot = selectFirst("div.story")?.text()?.trim().orEmpty()
+
+        return newMovieSearchResponse(title, href, type) {
+            this.posterUrl = poster
+            this.plot      = plot
+        }
     }
 
     private fun fixUrl(url: String)  = if (url.startsWith("http")) url else "$mainUrl$url"
