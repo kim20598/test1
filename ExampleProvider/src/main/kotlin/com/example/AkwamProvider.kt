@@ -7,13 +7,11 @@ import org.jsoup.nodes.Element
 class AkwamProvider : MainAPI() {
     override var mainUrl               = "https://ak.sv"
     override var name                  = "Akwam"
-    override val supportedTypes        = setOf(TvType.Movie, TvType.TvSeries, TvType.TvShow)
+    override val supportedTypes        = setOf(TvType.Movie, TvType.TvSeries)   // FIX 1
     override val hasMainPage           = true
     override var lang                  = "ar"
 
-    /* ------------------------------------------------------------- */
-    /*  5 rows -> Featured / Movies / Series / WWE-TV / Dubbed     */
-    /* ------------------------------------------------------------- */
+    /* ---------- 5 rows ---------- */
     private val rows = listOf(
         "مميزه"  to "${mainUrl}/page/{p}?section=2",
         "افلام"  to "${mainUrl}/movies?page={p}",
@@ -23,44 +21,35 @@ class AkwamProvider : MainAPI() {
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        // CS3 sends request.name = one of our rows -> return only that slice
-        val (rowName, urlTemp) = rows.first { it.first == request.name }
+        val (name, urlTemp) = rows.first { it.first == request.name }
         val url = urlTemp.replace("{p}", page.toString())
         val items = parseRow(url)
-        return newHomePageResponse(rowName, items)
+        return newHomePageResponse(name, items)
     }
 
     private suspend fun parseRow(url: String): List<SearchResponse> {
         val doc = app.get(url).document
-        return doc.select("div.widget-body div.entry-box")
-                  .mapNotNull { it.toSearchResult() }
+        return doc.select("div.widget-body div.entry-box").mapNotNull { it.toSearchResult() }
     }
 
-    /* ------------------------------------------------------------- */
-    /*  Search (same as before)                                      */
-    /* ------------------------------------------------------------- */
     override suspend fun search(query: String): List<SearchResponse> {
         val doc = app.get("${mainUrl}/search?q=$query").document
-        return doc.select("div.widget-body div.entry-box")
-                  .mapNotNull { it.toSearchResult() }
+        return doc.select("div.widget-body div.entry-box").mapNotNull { it.toSearchResult() }
     }
 
-    /* ------------------------------------------------------------- */
-    /*  Details + episodes                                           */
-    /* ------------------------------------------------------------- */
     override suspend fun load(url: String): LoadResponse {
         val doc = app.get(url).document
-
-        val title       = doc.selectFirst("h1.entry-title")?.text()?.trim()
-                            ?: throw ErrorLoadingException("No title")
-        val poster      = fixUrlNull(doc.selectFirst("div.poster img")?.attr("data-src")
-                            ?: doc.selectFirst("div.poster img")?.attr("src"))
-        val year        = doc.selectFirst("ul.entry-meta li:contains(سنة الإصدار)")
-                             ?.text()?.filter { it.isDigit() }?.toIntOrNull()
+        val title = doc.selectFirst("h1.entry-title")?.text()?.trim()
+                      ?: throw ErrorLoadingException("No title")
+        val poster = fixUrlNull(
+            doc.selectFirst("div.poster img")?.attr("data-src")
+                ?: doc.selectFirst("div.poster img")?.attr("src")
+        )
+        val year = doc.selectFirst("ul.entry-meta li:contains(سنة الإصدار)")
+                      ?.text()?.filter { it.isDigit() }?.toIntOrNull()
         val description = doc.selectFirst("div.story")?.text()?.trim().orEmpty()
-        val tags        = doc.select("ul.entry-meta li:contains(التصنيف) a")
-                             .map { it.text() }
-        val isMovie     = !doc.select("div.watch-seasons").hasText()
+        val tags = doc.select("ul.entry-meta li:contains(التصنيف) a").map { it.text() }
+        val isMovie = !doc.select("div.watch-seasons").hasText()
 
         return if (isMovie) {
             newMovieLoadResponse(title, url, TvType.Movie, url) {
@@ -86,45 +75,29 @@ class AkwamProvider : MainAPI() {
         }
     }
 
-    /* ------------------------------------------------------------- */
-    /*  Links – placeholder                                          */
-    /* ------------------------------------------------------------- */
     override suspend fun loadLinks(
-        data: String,
-        isCasting: Boolean,
+        data: String, isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val doc      = app.get(data).document
+        val doc = app.get(data).document
         val watchUrl = doc.selectFirst("a.watch-btn")?.attr("href") ?: return false
         loadExtractor(watchUrl, data, subtitleCallback, callback)
         return true
     }
 
-    /* ------------------------------------------------------------- */
-    /*  Helpers – correct type + lazy thumb                          */
-    /* ------------------------------------------------------------- */
     private fun Element.toSearchResult(): SearchResponse? {
         val title = selectFirst("h3 a")?.text() ?: return null
         val href  = fixUrl(selectFirst("h3 a")?.attr("href") ?: return null)
-        // lazy thumb
         val poster = fixUrlNull(
             selectFirst("img")?.attr("data-src")
                 ?: selectFirst("img")?.attr("src")
         )
-        // decide type from URL
         val type = when {
-            href.contains("/tvshows") -> TvType.TvShow
             href.contains("/series")  -> TvType.TvSeries
             else                      -> TvType.Movie
         }
-        // small plot snippet (optional)
-        val plot = selectFirst("div.story")?.text()?.trim().orEmpty()
-
-        return newMovieSearchResponse(title, href, type) {
-            this.posterUrl = poster
-            this.plot      = plot
-        }
+        return newMovieSearchResponse(title, href, type) { this.posterUrl = poster }  // FIX 2: no plot here
     }
 
     private fun fixUrl(url: String)  = if (url.startsWith("http")) url else "$mainUrl$url"
