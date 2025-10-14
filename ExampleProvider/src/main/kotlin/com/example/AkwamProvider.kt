@@ -1,7 +1,6 @@
-package com.example.akwam
+package com.example
 
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.mvvm.safeApiCall
 import com.lagradost.cloudstream3.utils.*
 import org.jsoup.Jsoup
 
@@ -12,36 +11,48 @@ class AkwamProvider : MainAPI() {
     override var lang = "ar"
     override val hasMainPage = false
 
-    // Basic HTTP helper
-    private suspend fun fetchDocument(url: String) =
-        app.get(url).document
+    // Helper function to fetch HTML
+    private suspend fun getDocument(url: String) = app.get(url).document
 
-    override suspend fun search(query: String): List<SearchResponse> = safeApiCall {
+    override suspend fun search(query: String): List<SearchResponse> {
         val searchUrl = "$mainUrl/search?q=$query"
-        val doc = fetchDocument(searchUrl)
-        val items = doc.select("div.item a")
+        val doc = getDocument(searchUrl)
+        val results = mutableListOf<SearchResponse>()
 
-        items.mapNotNull { element ->
-            val href = element.attr("href")
-            val title = element.selectFirst("h3")?.text() ?: return@mapNotNull null
+        doc.select("div.item a").forEach { element ->
+            val href = fixUrl(element.attr("href"))
+            val title = element.selectFirst("h3")?.text() ?: return@forEach
             val poster = element.selectFirst("img")?.attr("src")
 
-            newMovieSearchResponse(title, href) {
-                this.posterUrl = poster
-            }
+            results.add(
+                MovieSearchResponse(
+                    name = title,
+                    url = href,
+                    apiName = this.name,
+                    type = TvType.Movie,
+                    posterUrl = poster
+                )
+            )
         }
-    } ?: emptyList()
+
+        return results
+    }
 
     override suspend fun load(url: String): LoadResponse {
-        val doc = fetchDocument(url)
+        val doc = getDocument(url)
         val title = doc.selectFirst("h1.entry-title")?.text() ?: "فيلم"
         val poster = doc.selectFirst("div.movie-cover img")?.attr("src")
         val description = doc.selectFirst("div.widget-body div.text-white")?.text()
 
-        return newMovieLoadResponse(title, url, TvType.Movie, url) {
-            this.posterUrl = poster
-            this.plot = description
-        }
+        return MovieLoadResponse(
+            name = title,
+            url = url,
+            apiName = this.name,
+            type = TvType.Movie,
+            dataUrl = url,
+            posterUrl = poster,
+            plot = description
+        )
     }
 
     override suspend fun loadLinks(
@@ -50,28 +61,27 @@ class AkwamProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val doc = fetchDocument(data)
+        val doc = getDocument(data)
 
-        // 1️⃣ Find the download page link
-        val downloadLink = doc.selectFirst("a[href*=\"/download/\"]")?.attr("href")
+        // 1️⃣ Find link to download page
+        val downloadPageUrl = doc.selectFirst("a[href*=\"/download/\"]")?.attr("href")
             ?: return false
 
-        // 2️⃣ Fetch the download page
-        val downloadPage = fetchDocument(downloadLink)
+        val downloadDoc = getDocument(downloadPageUrl)
 
-        // 3️⃣ Find direct .mp4 URL
+        // 2️⃣ Extract real mp4 link
         val videoUrl = Regex("""https:\/\/s\d+\.downet\.net\/download\/[^\"]+\.mp4""")
-            .find(downloadPage.html())
+            .find(downloadDoc.html())
             ?.value ?: return false
 
-        // 4️⃣ Return as ExtractorLink
+        // 3️⃣ Send link back to Cloudstream
         callback.invoke(
-            newExtractorLink(
-                this.name,
-                "Akwam",
-                videoUrl,
-                mainUrl,
-                Qualities.P1080,
+            ExtractorLink(
+                source = this.name,
+                name = "Akwam",
+                url = videoUrl,
+                referer = mainUrl,
+                quality = Qualities.P1080.value,
                 isM3u8 = false
             )
         )
