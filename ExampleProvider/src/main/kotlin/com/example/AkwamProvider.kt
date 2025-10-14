@@ -1,6 +1,7 @@
 package com.example
 
 import com.lagradost.cloudstream3.*
+import com.lagradost.cloudstream3.utils.ExtractorLink
 
 class AkwamProvider : MainAPI() {
     override var mainUrl = "https://ak.sv"
@@ -20,22 +21,21 @@ class AkwamProvider : MainAPI() {
         return emptyList()
     }
 
-    // Load details - using the new API method
+    // Load details - using the correct API method
     override suspend fun load(url: String): LoadResponse {
         return newMovieLoadResponse(
             "Akwam Content",
             url,
-            this.name,
             TvType.Movie,
-            "",
-            "Content from Akwam",
-            2023
+            url
         ) {
-            // Optional: add more details here if needed
+            posterUrl = ""
+            plot = "Content from Akwam"
+            year = 2023
         }
     }
 
-    // Load video links
+    // Load video links - fixed signature
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
