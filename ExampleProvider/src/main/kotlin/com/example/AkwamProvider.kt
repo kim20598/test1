@@ -9,7 +9,7 @@ class AkwamProvider : MainAPI() {
     override var name = "Akwam"
     override val supportedTypes = setOf(TvType.Movie)
     override var lang = "ar"
-    override val hasMainPage = true 
+    override val hasMainPage = false 
 
     private suspend fun getDocument(url: String) = app.get(url).document
 
