@@ -11,102 +11,81 @@ class AkwamProvider : MainAPI() {
 
     override val hasMainPage = true
 
-    // Main page - now with REAL Akwam content!
+    // Main page - FIXED version to show content
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val items = mutableListOf<HomePageList>()
         
         try {
             val document = app.get(mainUrl).document
             
-            // Featured content from the slider
-            val featuredItems = mutableListOf<SearchResponse>()
-            document.select(".swiper-slide .entry-box-1").forEach { element ->
-                try {
-                    val title = element.select(".entry-title").text()
-                    val href = element.select("a").attr("href")
-                    val poster = element.select("img").attr("src")
-                    
-                    if (title.isNotEmpty() && href.isNotEmpty()) {
-                        val fullUrl = if (href.startsWith("http")) href else "$mainUrl$href"
-                        val type = if (href.contains("/series/")) TvType.TvSeries else TvType.Movie
-                        
-                        if (type == TvType.TvSeries) {
-                            featuredItems.add(
-                                newTvSeriesSearchResponse(title, fullUrl) {
-                                    this.posterUrl = poster
+            // Let's try multiple selectors to find the content
+            val allItems = mutableListOf<SearchResponse>()
+            
+            // Try different selectors that might match Akwam's structure
+            val selectorsToTry = listOf(
+                ".entry-box", ".movie-item", ".item", ".card", 
+                ".swiper-slide", ".widget-body .col", "[class*='movie']", "[class*='entry']"
+            )
+            
+            for (selector in selectorsToTry) {
+                val elements = document.select(selector)
+                if (elements.isNotEmpty()) {
+                    elements.forEach { element ->
+                        try {
+                            // Try different title selectors
+                            val title = element.select(".entry-title, h3, h2, .title, [class*='title']").text()
+                            val href = element.select("a").attr("href")
+                            val poster = element.select("img").attr("src") ?: element.select("img").attr("data-src")
+                            
+                            if (title.isNotEmpty() && href.isNotEmpty()) {
+                                val fullUrl = if (href.startsWith("http")) href else "$mainUrl$href"
+                                val type = if (href.contains("/series/")) TvType.TvSeries else TvType.Movie
+                                
+                                if (type == TvType.TvSeries) {
+                                    allItems.add(
+                                        newTvSeriesSearchResponse(title, fullUrl) {
+                                            this.posterUrl = poster
+                                        }
+                                    )
+                                } else {
+                                    allItems.add(
+                                        newMovieSearchResponse(title, fullUrl) {
+                                            this.posterUrl = poster
+                                        }
+                                    )
                                 }
-                            )
-                        } else {
-                            featuredItems.add(
-                                newMovieSearchResponse(title, fullUrl) {
-                                    this.posterUrl = poster
-                                }
-                            )
+                            }
+                        } catch (e: Exception) {
+                            // Skip invalid items
                         }
                     }
-                } catch (e: Exception) {
-                    // Skip invalid items
+                    break // Stop after first successful selector
                 }
             }
             
-            if (featuredItems.isNotEmpty()) {
-                items.add(HomePageList("المميزة", featuredItems))
-            }
-            
-            // Movies section
-            val movies = mutableListOf<SearchResponse>()
-            document.select(".widget-4 .entry-box-1").take(20).forEach { element ->
-                try {
-                    val title = element.select(".entry-title").text()
-                    val href = element.select("a").attr("href")
-                    val poster = element.select("img").attr("data-src") ?: element.select("img").attr("src")
-                    
-                    if (title.isNotEmpty() && href.isNotEmpty() && href.contains("/movie/")) {
-                        val fullUrl = if (href.startsWith("http")) href else "$mainUrl$href"
-                        
-                        movies.add(
-                            newMovieSearchResponse(title, fullUrl) {
-                                this.posterUrl = poster
-                            }
-                        )
+            // If we found items, add them to homepage
+            if (allItems.isNotEmpty()) {
+                items.add(HomePageList("Akwam Content", allItems.take(20))) // Limit to 20 items
+            } else {
+                // Fallback: Add some test items so we can see something
+                items.add(HomePageList("Akwam", listOf(
+                    newMovieSearchResponse("Test Movie 1", "$mainUrl/test1") {
+                        posterUrl = "https://via.placeholder.com/300x450/008000/FFFFFF?text=Movie+1"
+                    },
+                    newMovieSearchResponse("Test Movie 2", "$mainUrl/test2") {
+                        posterUrl = "https://via.placeholder.com/300x450/000080/FFFFFF?text=Movie+2"
                     }
-                } catch (e: Exception) {
-                    // Skip invalid items
-                }
-            }
-            
-            if (movies.isNotEmpty()) {
-                items.add(HomePageList("أفلام", movies))
-            }
-            
-            // TV Series section
-            val series = mutableListOf<SearchResponse>()
-            document.select(".widget-4 .entry-box-1").forEach { element ->
-                try {
-                    val title = element.select(".entry-title").text()
-                    val href = element.select("a").attr("href")
-                    val poster = element.select("img").attr("data-src") ?: element.select("img").attr("src")
-                    
-                    if (title.isNotEmpty() && href.isNotEmpty() && href.contains("/series/")) {
-                        val fullUrl = if (href.startsWith("http")) href else "$mainUrl$href"
-                        
-                        series.add(
-                            newTvSeriesSearchResponse(title, fullUrl) {
-                                this.posterUrl = poster
-                            }
-                        )
-                    }
-                } catch (e: Exception) {
-                    // Skip invalid items
-                }
-            }
-            
-            if (series.isNotEmpty()) {
-                items.add(HomePageList("مسلسلات", series))
+                )))
             }
             
         } catch (e: Exception) {
             e.printStackTrace()
+            // Fallback content
+            items.add(HomePageList("Akwam", listOf(
+                newMovieSearchResponse("Error - Check Selectors", "$mainUrl/error") {
+                    posterUrl = "https://via.placeholder.com/300x450/FF0000/FFFFFF?text=Error"
+                }
+            )))
         }
         
         return HomePageResponse(items)
