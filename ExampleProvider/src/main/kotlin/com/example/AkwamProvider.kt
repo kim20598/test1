@@ -30,11 +30,19 @@ class AkwamProvider : MainAPI() {
                         val fullUrl = if (href.startsWith("http")) href else "$mainUrl$href"
                         val type = if (href.contains("/series/")) TvType.TvSeries else TvType.Movie
                         
-                        featuredItems.add(
-                            newMovieSearchResponse(title, fullUrl, type) {
-                                this.posterUrl = poster
-                            }
-                        )
+                        if (type == TvType.TvSeries) {
+                            featuredItems.add(
+                                newTvSeriesSearchResponse(title, fullUrl) {
+                                    this.posterUrl = poster
+                                }
+                            )
+                        } else {
+                            featuredItems.add(
+                                newMovieSearchResponse(title, fullUrl) {
+                                    this.posterUrl = poster
+                                }
+                            )
+                        }
                     }
                 } catch (e: Exception) {
                     // Skip invalid items
@@ -57,7 +65,7 @@ class AkwamProvider : MainAPI() {
                         val fullUrl = if (href.startsWith("http")) href else "$mainUrl$href"
                         
                         movies.add(
-                            newMovieSearchResponse(title, fullUrl, TvType.Movie) {
+                            newMovieSearchResponse(title, fullUrl) {
                                 this.posterUrl = poster
                             }
                         )
@@ -83,7 +91,7 @@ class AkwamProvider : MainAPI() {
                         val fullUrl = if (href.startsWith("http")) href else "$mainUrl$href"
                         
                         series.add(
-                            newTvSeriesSearchResponse(title, fullUrl, TvType.TvSeries) {
+                            newTvSeriesSearchResponse(title, fullUrl) {
                                 this.posterUrl = poster
                             }
                         )
@@ -130,13 +138,13 @@ class AkwamProvider : MainAPI() {
                         
                         if (type == TvType.TvSeries) {
                             results.add(
-                                newTvSeriesSearchResponse(title, fullUrl, type) {
+                                newTvSeriesSearchResponse(title, fullUrl) {
                                     this.posterUrl = poster
                                 }
                             )
                         } else {
                             results.add(
-                                newMovieSearchResponse(title, fullUrl, type) {
+                                newMovieSearchResponse(title, fullUrl) {
                                     this.posterUrl = poster
                                 }
                             )
@@ -154,7 +162,7 @@ class AkwamProvider : MainAPI() {
         return results
     }
 
-    // Load details - REAL Akwam content details
+    // Load details - FIXED version
     override suspend fun load(url: String): LoadResponse {
         try {
             val document = app.get(url).document
@@ -179,18 +187,33 @@ class AkwamProvider : MainAPI() {
             val isSeries = url.contains("/series/") || document.select(".episode-list, [class*='episode']").isNotEmpty()
             
             return if (isSeries) {
-                newTvSeriesLoadResponse(title, url, TvType.TvSeries, url) {
-                    this.posterUrl = poster
-                    this.plot = plot
-                    this.year = year
-                    this.tags = genres
+                // For TV series - use the correct method signature
+                newTvSeriesLoadResponse(
+                    title,
+                    url,
+                    url, // dataUrl
+                    poster,
+                    year,
+                    plot,
+                    null, // rating
+                    year,
+                    genres
+                ) {
+                    // Additional properties can be set here if needed
                 }
             } else {
-                newMovieLoadResponse(title, url, TvType.Movie, url) {
-                    this.posterUrl = poster
-                    this.plot = plot
-                    this.year = year
-                    this.tags = genres
+                newMovieLoadResponse(
+                    title,
+                    url,
+                    url, // dataUrl  
+                    poster,
+                    year,
+                    plot,
+                    null, // rating
+                    year,
+                    genres
+                ) {
+                    // Additional properties can be set here if needed
                 }
             }
             
@@ -199,11 +222,11 @@ class AkwamProvider : MainAPI() {
             return newMovieLoadResponse(
                 "Akwam Content",
                 url,
-                TvType.Movie,
-                url
-            ) {
-                plot = "Failed to load content details"
-            }
+                url,
+                "",
+                null,
+                "Failed to load content details"
+            )
         }
     }
 
