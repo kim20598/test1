@@ -11,16 +11,15 @@ class AkwamProvider : MainAPI() {
     override val hasMainPage           = true
     override var lang                  = "ar"
 
-    /* 1.  CS3 ≥ 2.0  ->  List<MainPageData>  -------------------- */
+    /*  CORRECT signature – only name (String) required  */
     override val mainPage = listOf(
-        MainPageData("مميزه",  false),   // featured
-        MainPageData("افلام",   false),   // movies
-        MainPageData("مسلسلات", false),   // series
-        MainPageData("تلفزيون", false),   // WWE
-        MainPageData("مدبلج",   false)    // dubbed
+        MainPageData("مميزه"),
+        MainPageData("افلام"),
+        MainPageData("مسلسلات"),
+        MainPageData("تلفزيون"),
+        MainPageData("مدبلج")
     )
 
-    /* 2.  row URLs template  ------------------------------------- */
     private val rowMap = mapOf(
         "مميزه"  to "${mainUrl}/page/{p}?section=2",
         "افلام"  to "${mainUrl}/movies?page={p}",
@@ -29,7 +28,6 @@ class AkwamProvider : MainAPI() {
         "مدبلج"  to "${mainUrl}/movies?section=1&category=17&page={p}"
     )
 
-    /* 3.  safe getMainPage  -------------------------------------- */
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val urlTemp = rowMap[request.name] ?: "${mainUrl}/movies?page=$page"
         val url     = urlTemp.replace("{p}", page.toString())
@@ -105,6 +103,7 @@ class AkwamProvider : MainAPI() {
         )
         val type = when {
             href.contains("/series")  -> TvType.TvSeries
+            href.contains("/tvshows") -> TvType.TvSeries
             else                      -> TvType.Movie
         }
         return newMovieSearchResponse(title, href, type) { this.posterUrl = poster }
