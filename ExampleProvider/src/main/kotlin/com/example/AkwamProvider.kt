@@ -2,6 +2,7 @@ package com.example
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
+import org.jsoup.Jsoup
 
 class AkwamProvider : MainAPI() {
     override var mainUrl = "https://ak.sv"
@@ -11,88 +12,61 @@ class AkwamProvider : MainAPI() {
 
     override val hasMainPage = true
 
-    // Main page - keep it simple for now
+    // Main page - let's add some test content first
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        return HomePageResponse(listOf())
-    }
-
-    // Search function - let's make this work with real Akwam search
-    override suspend fun search(query: String): List<SearchResponse> {
-        val results = mutableListOf<SearchResponse>()
+        val items = mutableListOf<HomePageList>()
         
-        try {
-            // Try to search on Akwam
-            val encodedQuery = java.net.URLEncoder.encode(query, "UTF-8")
-            val searchUrl = "$mainUrl/search?q=$encodedQuery"
-            val document = app.get(searchUrl).document
-            
-            // Try common selectors for search results
-            // We'll test multiple common patterns used by streaming sites
-            val selectors = listOf(
-                ".movie", ".item", ".card", ".box", ".post",
-                ".search-result", ".result", "[class*='movie']"
-            )
-            
-            for (selector in selectors) {
-                val items = document.select(selector)
-                if (items.isNotEmpty()) {
-                    items.forEach { element ->
-                        try {
-                            val title = element.select("h2, h3, .title, [class*='title']").text()
-                            val href = element.select("a").attr("href")
-                            val poster = element.select("img").attr("src")
-                            
-                            if (title.isNotEmpty() && href.isNotEmpty()) {
-                                val fullUrl = if (href.startsWith("http")) href else "$mainUrl$href"
-                                
-                                val type = if (title.contains("مسلسل") || href.contains("series")) {
-                                    TvType.TvSeries
-                                } else {
-                                    TvType.Movie
-                                }
-                                
-                                results.add(
-                                    newMovieSearchResponse(title, fullUrl, type) {
-                                        this.posterUrl = poster
-                                    }
-                                )
-                            }
-                        } catch (e: Exception) {
-                            // Skip invalid items
-                        }
-                    }
-                    break // Stop after first successful selector
-                }
+        // TEST: Add some dummy content to see if it shows up
+        val testItems = listOf(
+            newMovieSearchResponse("Test Movie 1", "$mainUrl/test1", TvType.Movie) {
+                posterUrl = "https://via.placeholder.com/300x450/008000/FFFFFF?text=Movie+1"
+            },
+            newMovieSearchResponse("Test Movie 2", "$mainUrl/test2", TvType.Movie) {
+                posterUrl = "https://via.placeholder.com/300x450/000080/FFFFFF?text=Movie+2"
+            },
+            newTvSeriesSearchResponse("Test Series 1", "$mainUrl/series1", TvType.TvSeries) {
+                posterUrl = "https://via.placeholder.com/300x450/800080/FFFFFF?text=Series+1"
             }
-            
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        )
         
-        return results
+        items.add(HomePageList("Test Content", testItems))
+        
+        return HomePageResponse(items)
     }
 
-    // Load details - keep it simple
+    // Search function - let's test with some dummy results first
+    override suspend fun search(query: String): List<SearchResponse> {
+        // Return test results for any search
+        return listOf(
+            newMovieSearchResponse("Search Result: $query", "$mainUrl/search", TvType.Movie) {
+                posterUrl = "https://via.placeholder.com/300x450/FF0000/FFFFFF?text=Search"
+            }
+        )
+    }
+
+    // Load details
     override suspend fun load(url: String): LoadResponse {
         return newMovieLoadResponse(
-            "Akwam Content",
+            "Test Content Details",
             url,
             TvType.Movie,
             url
         ) {
-            posterUrl = ""
-            plot = "Content from Akwam"
-            year = 2023
+            posterUrl = "https://via.placeholder.com/300x450/000000/FFFFFF?text=Details"
+            plot = "This is a test content from Akwam provider. If you can see this, the provider is working!"
+            year = 2024
+            tags = listOf("Action", "Test")
         }
     }
 
-    // Load video links - keep it simple
+    // Load video links
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
+        // For testing, return true but no actual video
         return true
     }
 }
