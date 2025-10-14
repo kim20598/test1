@@ -19,13 +19,10 @@ dependencies {
 cloudstream {
     description = "Akwam Arabic streaming provider"
     authors = listOf("Kimo")
-
     status = 1
     tvTypes = listOf("Movie", "TvSeries")
-
     requiresResources = false
     language = "ar"
-
     iconUrl = "https://ak.sv/assets/images/logo.png"
 }
 
@@ -50,4 +47,9 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+}
+
+// ✅ This forces the Gradle build to use Java 17 for Kotlin
+kotlin {
+    jvmToolchain(17)
 }
