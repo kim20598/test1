@@ -11,7 +11,6 @@ class AkwamProvider : MainAPI() {
     override var lang = "ar"
     override val hasMainPage = false
 
-    // Helper function to fetch HTML
     private suspend fun getDocument(url: String) = app.get(url).document
 
     override suspend fun search(query: String): List<SearchResponse> {
@@ -25,13 +24,9 @@ class AkwamProvider : MainAPI() {
             val poster = element.selectFirst("img")?.attr("src")
 
             results.add(
-                MovieSearchResponse(
-                    name = title,
-                    url = href,
-                    apiName = this.name,
-                    type = TvType.Movie,
-                    posterUrl = poster
-                )
+                newMovieSearchResponse(title, href) {
+                    this.posterUrl = poster
+                }
             )
         }
 
@@ -44,15 +39,10 @@ class AkwamProvider : MainAPI() {
         val poster = doc.selectFirst("div.movie-cover img")?.attr("src")
         val description = doc.selectFirst("div.widget-body div.text-white")?.text()
 
-        return MovieLoadResponse(
-            name = title,
-            url = url,
-            apiName = this.name,
-            type = TvType.Movie,
-            dataUrl = url,
-            posterUrl = poster,
-            plot = description
-        )
+        return newMovieLoadResponse(title, url, TvType.Movie, url) {
+            this.posterUrl = poster
+            this.plot = description
+        }
     }
 
     override suspend fun loadLinks(
@@ -63,25 +53,24 @@ class AkwamProvider : MainAPI() {
     ): Boolean {
         val doc = getDocument(data)
 
-        // 1️⃣ Find link to download page
+        // Find download page
         val downloadPageUrl = doc.selectFirst("a[href*=\"/download/\"]")?.attr("href")
             ?: return false
 
         val downloadDoc = getDocument(downloadPageUrl)
 
-        // 2️⃣ Extract real mp4 link
+        // Find direct mp4 link
         val videoUrl = Regex("""https:\/\/s\d+\.downet\.net\/download\/[^\"]+\.mp4""")
             .find(downloadDoc.html())
             ?.value ?: return false
 
-        // 3️⃣ Send link back to Cloudstream
         callback.invoke(
-            ExtractorLink(
-                source = this.name,
-                name = "Akwam",
-                url = videoUrl,
-                referer = mainUrl,
-                quality = Qualities.P1080.value,
+            newExtractorLink(
+                this.name,
+                "Akwam",
+                videoUrl,
+                mainUrl,
+                Qualities.P1080,
                 isM3u8 = false
             )
         )
