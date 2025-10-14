@@ -1,6 +1,42 @@
+// ✅ Cloudstream plugin gradle setup
 plugins {
     id("com.android.library")
     kotlin("android")
+    id("com.lagradost.cloudstream3.gradle") // 👈 Required for Cloudstream plugins
+}
+
+version = 1
+
+repositories {
+    google()
+    mavenCentral()
+}
+
+dependencies {
+    // Optional UI helpers
+    implementation("com.google.android.material:material:1.12.0")
+    implementation("androidx.recyclerview:recyclerview:1.3.2")
+}
+
+cloudstream {
+    description = "Akwam Arabic streaming provider"
+    authors = listOf("Kimo")
+
+    /**
+     * Status int:
+     * 0: Down
+     * 1: Working
+     * 2: Slow
+     * 3: Beta-only
+     */
+    status = 1
+
+    tvTypes = listOf("Movie", "TvSeries")
+
+    requiresResources = false
+    language = "ar"
+
+    iconUrl = "https://ak.sv/assets/images/logo.png"
 }
 
 android {
@@ -12,6 +48,7 @@ android {
     }
 
     buildFeatures {
+        buildConfig = true
         viewBinding = true
     }
 
@@ -23,16 +60,4 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
-}
-
-repositories {
-    google()
-    mavenCentral()
-    // ✅ Required for Cloudstream plugin SDK
-    maven("https://jitpack.io")
-}
-
-dependencies {
-    // ✅ Core Cloudstream plugin SDK (latest snapshot)
-    implementation("com.github.recloudstream:cloudstream:master-SNAPSHOT")
 }
