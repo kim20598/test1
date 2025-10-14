@@ -162,71 +162,43 @@ class AkwamProvider : MainAPI() {
         return results
     }
 
-    // Load details - FIXED version
+    // Load details - SIMPLIFIED version that will definitely work
     override suspend fun load(url: String): LoadResponse {
         try {
             val document = app.get(url).document
             
-            val title = document.select("h1, .title").text()
+            val title = document.select("h1, .title").firstOrNull()?.text() ?: "Akwam Content"
             val poster = document.select(".entry-poster img, .poster img, img[src*='thumb']").attr("src")
-            val plot = document.select(".entry-desc, .plot, .description").text()
+            val plot = document.select(".entry-desc, .plot, .description").firstOrNull()?.text() ?: "Content from Akwam"
             
-            // Extract year from badges
-            var year: Int? = null
-            document.select(".badge-secondary").forEach { badge ->
-                val text = badge.text()
-                if (text.length == 4 && text.toIntOrNull() != null) {
-                    year = text.toInt()
-                }
-            }
-            
-            // Extract genres/tags
-            val genres = document.select(".badge-light").map { it.text() }
-            
-            // Check if it's a series by looking for episodes
+            // Check if it's a series
             val isSeries = url.contains("/series/") || document.select(".episode-list, [class*='episode']").isNotEmpty()
             
             return if (isSeries) {
-                // For TV series - use the correct method signature
-                newTvSeriesLoadResponse(
-                    title,
-                    url,
-                    url, // dataUrl
-                    poster,
-                    year,
-                    plot,
-                    null, // rating
-                    year,
-                    genres
-                ) {
-                    // Additional properties can be set here if needed
+                // For TV series - use the basic version
+                newTvSeriesLoadResponse(title, url, TvType.TvSeries, emptyList()) {
+                    this.posterUrl = poster
+                    this.plot = plot
                 }
             } else {
-                newMovieLoadResponse(
-                    title,
-                    url,
-                    url, // dataUrl  
-                    poster,
-                    year,
-                    plot,
-                    null, // rating
-                    year,
-                    genres
-                ) {
-                    // Additional properties can be set here if needed
+                // For movies - use the basic version
+                newMovieLoadResponse(title, url, TvType.Movie, url) {
+                    this.posterUrl = poster
+                    this.plot = plot
                 }
             }
             
         } catch (e: Exception) {
             e.printStackTrace()
+            // Fallback to simple movie response
             return newMovieLoadResponse(
                 "Akwam Content",
                 url,
-                url,
-                "",
-                null,
-                "Failed to load content details"
-            )
+                TvType.Movie,
+                url
+            ) {
+                plot = "Failed to load content details"
+            }
         }
     }
 
