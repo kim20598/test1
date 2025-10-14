@@ -53,27 +53,30 @@ class AkwamProvider : MainAPI() {
     ): Boolean {
         val doc = getDocument(data)
 
-        // 1️⃣ Find download page link
+        // 1️⃣ Find the download page link
         val downloadPageUrl = doc.selectFirst("a[href*=\"/download/\"]")?.attr("href")
             ?: return false
 
+        // 2️⃣ Open the download page
         val downloadDoc = getDocument(downloadPageUrl)
 
-        // 2️⃣ Find direct mp4 link
+        // 3️⃣ Extract the direct mp4 link
         val videoUrl = Regex("""https:\/\/s\d+\.downet\.net\/download\/[^\"]+\.mp4""")
             .find(downloadDoc.html())
             ?.value ?: return false
 
-        // 3️⃣ Return clean link
-        callback.invoke(
+        // 4️⃣ Return link using newExtractorLink()
+        callback(
             newExtractorLink(
-                this.name,               // source
-                "Akwam",                 // name
-                videoUrl,                // url
-                mainUrl,                 // referer
-                Qualities.P1080.value,   // quality
-                ExtractorLinkType.VIDEO  // link type
-            )
+                source = name,
+                name = "Akwam",
+                url = videoUrl,
+                type = ExtractorLinkType.VIDEO
+            ) {
+                this.quality = Qualities.P1080.value
+                this.referer = mainUrl
+                this.isM3u8 = false
+            }
         )
 
         return true
