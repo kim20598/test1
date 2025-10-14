@@ -4,6 +4,8 @@ import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.app
 import com.lagradost.cloudstream3.extractors.*
 import org.jsoup.Jsoup
+import com.lagradost.cloudstream3.utils.ExtractorLinkType
+
 
 object AkwamExtractor : ExtractorApi() {
     override val name = "Akwam"
