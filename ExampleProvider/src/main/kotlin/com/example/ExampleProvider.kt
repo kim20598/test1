@@ -2,8 +2,6 @@ package com.example
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.loadExtractor
-import org.jsoup.Jsoup
 
 class ExampleProvider : MainAPI() {
     override var mainUrl = "https://example.com/"
@@ -13,50 +11,51 @@ class ExampleProvider : MainAPI() {
     override val hasMainPage = true
 
     // Main page with featured content
-    override suspend fun getMainPage(page: Int, request : MainPageRequest): HomePageResponse {
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val items = listOf(
-            newHomePageList("Featured Movies", listOf(
-                MovieSearchResponse(
-                    "Example Movie 1",
-                    "$mainUrl/movie1",
-                    this.name,
-                    TvType.Movie,
-                    "$mainUrl/poster1.jpg",
-                    null,
-                    null
-                ),
-                MovieSearchResponse(
-                    "Example Movie 2", 
-                    "$mainUrl/movie2",
-                    this.name,
-                    TvType.Movie,
-                    "$mainUrl/poster2.jpg",
-                    null,
-                    null
+            HomePageList(
+                "Featured Movies", 
+                listOf(
+                    MovieSearchResponse(
+                        "Example Movie 1",
+                        "$mainUrl/movie1",
+                        this.name,
+                        TvType.Movie,
+                        "$mainUrl/poster1.jpg",
+                        null,
+                        null
+                    ),
+                    MovieSearchResponse(
+                        "Example Movie 2", 
+                        "$mainUrl/movie2",
+                        this.name,
+                        TvType.Movie,
+                        "$mainUrl/poster2.jpg",
+                        null,
+                        null
+                    )
                 )
-            )),
-            newHomePageList("Popular Series", listOf(
-                TvSeriesSearchResponse(
-                    "Example Series",
-                    "$mainUrl/series1", 
-                    this.name,
-                    TvType.TvSeries,
-                    "$mainUrl/series-poster.jpg",
-                    null,
-                    null
+            ),
+            HomePageList(
+                "Popular Series", 
+                listOf(
+                    TvSeriesSearchResponse(
+                        "Example Series",
+                        "$mainUrl/series1", 
+                        this.name,
+                        TvType.TvSeries,
+                        "$mainUrl/series-poster.jpg",
+                        null,
+                        null
+                    )
                 )
-            ))
+            )
         )
         return HomePageResponse(items)
     }
 
     // Search function
     override suspend fun search(query: String): List<SearchResponse> {
-        // In a real provider, you would:
-        // 1. Fetch search results from the website
-        // 2. Parse HTML using Jsoup
-        // 3. Return actual search results
-        
         // Mock search results for demonstration
         return if (query.contains("example", ignoreCase = true)) {
             listOf(
@@ -77,7 +76,6 @@ class ExampleProvider : MainAPI() {
 
     // Load details for a movie/series
     override suspend fun load(url: String): LoadResponse {
-        // Parse the actual page to get details
         return MovieLoadResponse(
             "Example Movie Title",
             url,
@@ -93,10 +91,10 @@ class ExampleProvider : MainAPI() {
             null,
             listOf(
                 Episode(
+                    "$mainUrl/video1",
                     "Episode 1",
                     1,
-                    1,
-                    "$mainUrl/video1"
+                    1
                 )
             )
         )
@@ -109,11 +107,6 @@ class ExampleProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // In a real provider, you would:
-        // 1. Extract video URLs from the data
-        // 2. Use loadExtractor for supported hosts
-        // 3. Call callback with valid ExtractorLink objects
-        
         // Example for direct video link:
         callback.invoke(
             ExtractorLink(
@@ -121,7 +114,7 @@ class ExampleProvider : MainAPI() {
                 this.name,
                 "https://example.com/video.mp4",
                 mainUrl,
-                Qualities.P720.value,
+                getQuality("720p"),
                 false
             )
         )
