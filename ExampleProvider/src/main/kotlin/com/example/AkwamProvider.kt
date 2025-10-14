@@ -2,14 +2,14 @@ package com.example
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
-import org.jsoup.Jsoup
+import org.jsoup.nodes.Element
 
 class AkwamProvider : MainAPI() {
-    override var mainUrl = "https://ak.sv"
-    override var name = "Akwam"
-    override val supportedTypes = setOf(TvType.Movie)
-    override var lang = "ar"
-    override val hasMainPage = false 
+    override var mainUrl               = "https://ak.sv"
+    override var name                  = "Akwam"
+    override val supportedTypes        = setOf(TvType.Movie, TvType.TvSeries)
+    override val hasMainPage           = true
+    override var lang                  = "ar"
 
     private suspend fun getDocument(url: String) = app.get(url).document
 
