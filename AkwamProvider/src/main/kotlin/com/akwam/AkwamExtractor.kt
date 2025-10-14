@@ -28,7 +28,7 @@ object AkwamExtractor : ExtractorApi() {
                     linkUrl,
                     mainUrl,
                     getQualityFromName(quality),
-                    type = ExtractorLink.Type.DIRECT
+                    type = ExtractorLinkType.DIRECT
                 )
             )
         }
