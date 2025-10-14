@@ -1,60 +1,44 @@
-package com.akwam
+package com.example.akwam
 
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.utils.*
-import org.jsoup.nodes.Element
+import com.lagradost.cloudstream3.utils.AppUtils
+import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.Qualities
+import com.lagradost.cloudstream3.network.CloudflareKiller
 
 class AkwamProvider : MainAPI() {
     override var mainUrl = "https://ak.sv"
     override var name = "Akwam"
-    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
+    override val supportedTypes = setOf(TvType.Movie)
     override var lang = "ar"
-    override val hasMainPage = true
+    override val hasMainPage = false
 
-    // =============================
-    // 🔎 البحث
-    // =============================
+    private val cfKiller = CloudflareKiller()
+
     override suspend fun search(query: String): List<SearchResponse> {
-        val url = "$mainUrl/search?q=$query"
-        val document = app.get(url).document
-        return document.select("div.entry-box-1").mapNotNull { element ->
-            toSearchResponse(element)
+        val searchUrl = "$mainUrl/search?q=$query"
+        val doc = cfKiller.getDocument(searchUrl)
+        val items = doc.select("div.item a")
+
+        return items.mapNotNull {
+            val href = it.attr("href")
+            val title = it.selectFirst("h3")?.text() ?: return@mapNotNull null
+            val poster = it.selectFirst("img")?.attr("src")
+            MovieSearchResponse(
+                name = title,
+                url = href,
+                apiName = this.name,
+                type = TvType.Movie,
+                posterUrl = poster
+            )
         }
     }
 
-    private fun toSearchResponse(element: Element): SearchResponse? {
-        val title = element.selectFirst("h3.entry-title a")?.text() ?: return null
-        val href = fixUrl(element.selectFirst("a.box")?.attr("href") ?: return null)
-        val poster = fixUrlNull(element.selectFirst("div.entry-image img")?.attr("src"))
-
-        return MovieSearchResponse(
-            title = title,
-            url = href,
-            apiName = this.name,
-            type = TvType.Movie,
-            posterUrl = poster
-        )
-    }
-
-    // =============================
-    // 📄 تحميل صفحة الفيلم
-    // =============================
-    override suspend fun load(url: String): LoadResponse? {
-        val document = app.get(url).document
-
-        val title = document.selectFirst("h1.entry-title")?.text() ?: return null
-        val poster = document.selectFirst("div.movie-cover img")?.attr("src")
-        val description = document.selectFirst(".widget-body .text-white")?.text()
-
-        // استخراج السنة
-        val year = document.selectFirst("div.font-size-16:matchesOwn(السنة)")?.text()
-            ?.replace(Regex("[^0-9]"), "")?.toIntOrNull()
-
-        // التصنيفات (Genres)
-        val genres = document.select("a.badge-light").map { it.text() }
-
-        // التقييم
-        val rating = document.selectFirst("span.mx-2")?.text()?.replace("10 /", "")?.trim()
+    override suspend fun load(url: String): LoadResponse {
+        val doc = cfKiller.getDocument(url)
+        val title = doc.selectFirst("h1.entry-title")?.text() ?: "فيلم"
+        val poster = doc.selectFirst("div.movie-cover img")?.attr("src")
+        val description = doc.selectFirst("div.widget-body div.text-white")?.text()
 
         return MovieLoadResponse(
             name = title,
@@ -62,12 +46,44 @@ class AkwamProvider : MainAPI() {
             apiName = this.name,
             type = TvType.Movie,
             dataUrl = url,
-            posterUrl = fixUrlNull(poster),
-            plot = description,
-            year = year,
-        ).apply {
-            this.rating = rating
-            this.tags = genres
+            posterUrl = poster,
+            plot = description
+        )
+    }
+
+    override suspend fun loadLinks(
+        data: String,
+        isCasting: Boolean,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        // Step 1: Go to the movie page
+        val doc = cfKiller.getDocument(data)
+        val watchLink = doc.selectFirst("a[href*=\"/download/\"]")?.attr("href")
+
+        if (watchLink != null) {
+            // Step 2: Go to download page
+            val downloadPage = cfKiller.getDocument(watchLink)
+
+            // Step 3: Find the actual .mp4 file link
+            val videoUrl = Regex("""https:\/\/s\d+\.downet\.net\/download\/[^\"]+\.mp4""")
+                .find(downloadPage.html())
+                ?.value
+
+            if (videoUrl != null) {
+                callback.invoke(
+                    ExtractorLink(
+                        source = this.name,
+                        name = "Akwam",
+                        url = videoUrl,
+                        referer = mainUrl,
+                        quality = Qualities.P1080.value,
+                        isM3u8 = false
+                    )
+                )
+                return true
+            }
         }
+        return false
     }
 }
