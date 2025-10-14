@@ -8,7 +8,7 @@ class AkwamProvider : MainAPI() {
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
     override var lang = "ar"
 
-    override val hasMainPage = false // Disable main page for now
+    override val hasMainPage = true // Disable main page for now
 
     override suspend fun search(query: String): List<SearchResponse> {
         // Return empty for testing
