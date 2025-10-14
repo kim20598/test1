@@ -11,36 +11,19 @@ class AkwamProvider : MainAPI() {
     override val hasMainPage           = true
     override var lang                  = "ar"
 
-    /*  CORRECT signature – only name (String) required  */
+    /*  ONE simple row – latest everything  */
     override val mainPage = listOf(
-        MainPageData("مميزه"),
-        MainPageData("افلام"),
-        MainPageData("مسلسلات"),
-        MainPageData("تلفزيون"),
-        MainPageData("مدبلج")
-    )
-
-    private val rowMap = mapOf(
-        "مميزه"  to "${mainUrl}/page/{p}?section=2",
-        "افلام"  to "${mainUrl}/movies?page={p}",
-        "مسلسلات" to "${mainUrl}/series?page={p}",
-        "تلفزيون" to "${mainUrl}/tvshows?category=28&page={p}",
-        "مدبلج"  to "${mainUrl}/movies?section=1&category=17&page={p}"
+        MainPageData("Akwam Latest")
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val urlTemp = rowMap[request.name] ?: "${mainUrl}/movies?page=$page"
-        val url     = urlTemp.replace("{p}", page.toString())
-        val items   = parseRow(url)
+        val doc = app.get("${mainUrl}/page/$page").document
+        val items = doc.select("div.widget-body div.entry-box")
+                       .mapNotNull { it.toSearchResult() }
         return newHomePageResponse(request.name, items)
     }
 
-    private suspend fun parseRow(url: String): List<SearchResponse> =
-        app.get(url).document
-           .select("div.widget-body div.entry-box")
-           .mapNotNull { it.toSearchResult() }
-
-    override suspend fun search(query: String) =
+    override suspend fun search(query: String): List<SearchResponse> =
         app.get("${mainUrl}/search?q=$query").document
            .select("div.widget-body div.entry-box")
            .mapNotNull { it.toSearchResult() }
@@ -103,7 +86,6 @@ class AkwamProvider : MainAPI() {
         )
         val type = when {
             href.contains("/series")  -> TvType.TvSeries
-            href.contains("/tvshows") -> TvType.TvSeries
             else                      -> TvType.Movie
         }
         return newMovieSearchResponse(title, href, type) { this.posterUrl = poster }
