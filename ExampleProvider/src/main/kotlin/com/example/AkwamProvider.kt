@@ -2,14 +2,14 @@ package com.example
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
-import org.jsoup.nodes.Element
+import org.jsoup.Jsoup
 
 class AkwamProvider : MainAPI() {
-    override var mainUrl               = "https://ak.sv"
-    override var name                  = "Akwam"
-    override val supportedTypes        = setOf(TvType.Movie, TvType.TvSeries)
-    override val hasMainPage           = true
-    override var lang                  = "ar"
+    override var mainUrl = "https://ak.sv"
+    override var name = "Akwam"
+    override val supportedTypes = setOf(TvType.Movie)
+    override var lang = "ar"
+    override val hasMainPage = false
 
     private suspend fun getDocument(url: String) = app.get(url).document
 
@@ -65,7 +65,7 @@ class AkwamProvider : MainAPI() {
             .find(downloadDoc.html())
             ?.value ?: return false
 
-        // 4️⃣ Return link using newExtractorLink()
+        // 4️⃣ Return the link
         callback(
             newExtractorLink(
                 source = name,
@@ -75,7 +75,7 @@ class AkwamProvider : MainAPI() {
             ) {
                 this.quality = Qualities.P1080.value
                 this.referer = mainUrl
-              //  this.isM3u8 = false
+                // removed: this.isM3u8 = false  ✅
             }
         )
 
