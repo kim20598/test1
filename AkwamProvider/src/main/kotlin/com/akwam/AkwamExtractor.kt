@@ -1,38 +1,20 @@
 package com.akwam
 
 import com.lagradost.cloudstream3.utils.*
-import com.lagradost.cloudstream3.app
-import com.lagradost.cloudstream3.extractors.*
 import org.jsoup.Jsoup
-import com.lagradost.cloudstream3.utils.ExtractorLinkType
 
+object AkwamExtractor {
 
-object AkwamExtractor : ExtractorApi() {
-    override val name = "Akwam"
-    override val mainUrl = "https://akwam.to"
-    override val requiresReferer = false
-
-    override suspend fun getUrl(url: String, referer: String?): List<ExtractorLink> {
-        val links = mutableListOf<ExtractorLink>()
-
-        val doc = app.get(url).document
-        val elements = doc.select("a.download-btn")
-
-        for (el in elements) {
-            val linkUrl = el.attr("href")
-            val quality = el.text().trim()
-            links.add(
-                ExtractorLink(
-                    name,
-                    name,
-                    linkUrl,
-                    mainUrl,
-                    getQualityFromName(quality),
-                    type = ExtractorLinkType.DIRECT
-                )
-            )
+    suspend fun extractLinks(data: String, callback: (ExtractorLink) -> Unit): Boolean {
+        // Extract the links from the data
+        val document = Jsoup.parse(data)
+        
+        // Example: Extract video links
+        document.select("a.video-link").forEach {
+            val link = it.attr("href")
+            callback(ExtractorLink(link, "Video"))
         }
-
-        return links
+        
+        return true
     }
 }
