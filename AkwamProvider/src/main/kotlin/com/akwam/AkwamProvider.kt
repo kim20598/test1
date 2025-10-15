@@ -23,8 +23,8 @@ class AkwamProvider : MainAPI() {
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
-        subtitleCallback: (loadSubtitleFile) -> Unit,
-        callback: (loadExtractorLinks) -> Unit
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
     ): Boolean {
         return AkwamExtractor.extractLinks(data, callback)
     }
