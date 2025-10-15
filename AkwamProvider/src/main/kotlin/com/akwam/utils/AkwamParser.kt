@@ -1,37 +1,33 @@
 package com.akwam.utils
 
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.utils.*
 import org.jsoup.Jsoup
 
-object AkwamParser : MainAPI() {
-    override var mainUrl = "https://akwam.to"
-    override var name = "Akwam"
-    override val supportedTypes = setOf(TvType.Movie)
-    override val lang = "ar"
+object AkwamParser {
 
-    override suspend fun search(query: String): List<SearchResponse> {
-        val doc = app.get("$mainUrl/search?q=$query").document
-        return doc.select(".entry").mapNotNull { el ->
-            val title = el.selectFirst(".entry-title a")?.text() ?: return@mapNotNull null
-            val href = el.selectFirst(".entry-title a")?.attr("href") ?: return@mapNotNull null
-            val poster = el.selectFirst("img")?.attr("src")
-
-            newMovieSearchResponse(title, href, TvType.Movie) {
-                this.posterUrl = poster
-            }
+    suspend fun searchMovies(query: String): List<SearchResponse> {
+        // Your search logic here, using Jsoup or your preferred method to parse the search results
+        val document = Jsoup.connect("https://ak.sv/search?q=$query").get()
+        
+        // Example: return a list of search results
+        return document.select("div.movie").map {
+            val title = it.select("h3.title").text()
+            val url = it.select("a").attr("href")
+            val imageUrl = it.select("img").attr("src")
+            
+            SearchResponse(title, url, imageUrl)
         }
     }
 
-    override suspend fun load(url: String): LoadResponse {
-        val doc = app.get(url).document
-        val title = doc.selectFirst("h1")?.text() ?: "Unknown"
-        val poster = doc.selectFirst(".poster img")?.attr("src")
-        val plot = doc.selectFirst(".story")?.text()
+    suspend fun loadMovie(url: String): LoadResponse? {
+        // Your movie loading logic here, use Jsoup to scrape the movie page
+        val document = Jsoup.connect(url).get()
+        
+        // Example: Return a movie object
+        val title = document.select("h1.title").text()
+        val description = document.select("div.description").text()
+        val year = document.select("span.year").text()
 
-        return newMovieLoadResponse(title, url, TvType.Movie, url) {
-            this.posterUrl = poster
-            this.plot = plot
-        }
+        return MovieLoadResponse(title, description, year)
     }
 }
