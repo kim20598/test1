@@ -2,64 +2,65 @@ package com.akwam
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
+import org.jsoup.Jsoup
 
 class Akwam : MainAPI() {
     override var mainUrl = "https://ak.sv"
     override var name = "Akwam"
-    override val hasMainPage = true
     override var lang = "ar"
+    override val hasMainPage = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
-    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val home = mutableListOf<HomePageList>()
-        val document = app.get(mainUrl).document
-
-        val movies = document.select("div.movies div.item a")
-        val homeList = movies.mapNotNull { el ->
-            val href = el.attr("href")?.toAbsolute() ?: return@mapNotNull null
-            val title = el.selectFirst("h3")?.text() ?: el.attr("title")
-            val poster = el.selectFirst("img")?.attr("data-src") ?: el.selectFirst("img")?.attr("src")
-            MovieSearchResponse(
-                title ?: "Akwam Movie",
-                href,
-                this.name,
-                TvType.Movie,
-                poster,
-                null,
-                null,
-                null
-            )
+    private fun String.toAbsolute(): String {
+        return when {
+            this.startsWith("http") -> this
+            this.startsWith("//") -> "https:$this"
+            else -> "$mainUrl${if (this.startsWith("/")) "" else "/"}$this"
         }
-        home.add(HomePageList("Movies", homeList))
-        return HomePageResponse(home)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val res = app.get("$mainUrl/search/?q=${query}")
-        val document = res.document
-        val results = document.select("div.movies div.item a")
-        return results.mapNotNull { el ->
-            val href = el.attr("href")?.toAbsolute() ?: return@mapNotNull null
-            val title = el.selectFirst("h3")?.text() ?: el.attr("title")
-            val poster = el.selectFirst("img")?.attr("data-src") ?: el.selectFirst("img")?.attr("src")
-            MovieSearchResponse(
-                title ?: "Akwam Movie",
-                href,
-                this.name,
-                TvType.Movie,
-                poster,
-                null,
-                null,
-                null
-            )
+        val url = "$mainUrl/search?q=${query.replace(" ", "+")}"
+        val document = app.get(url).document
+        return document.select("div.entry-box").mapNotNull {
+            val title = it.selectFirst("h3.entry-title a")?.text() ?: return@mapNotNull null
+            val href = it.selectFirst("h3.entry-title a")?.attr("href")?.toAbsolute() ?: return@mapNotNull null
+            val poster = it.selectFirst("img")?.attr("data-src")?.toAbsolute()
+            val type = if (href.contains("/movie/")) TvType.Movie else TvType.TvSeries
+
+            newMovieSearchResponse(title, href, type) {
+                this.posterUrl = poster
+            }
         }
     }
 
-    override suspend fun load(url: String): LoadResponse? {
+    override val mainPage = mainPageOf(
+        "$mainUrl/movies" to "أفلام",
+        "$mainUrl/series" to "مسلسلات",
+        "$mainUrl/anime" to "أنمي"
+    )
+
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+        val url = if (page == 1) request.data else "${request.data}/page/$page"
         val document = app.get(url).document
-        val title = document.selectFirst("h1")?.text() ?: "Akwam Movie"
-        val poster = document.selectFirst("div.poster img")?.attr("src")
-        val plot = document.selectFirst("div.story p")?.text()
+
+        val items = document.select("div.entry-box").mapNotNull {
+            val title = it.selectFirst("h3.entry-title a")?.text() ?: return@mapNotNull null
+            val href = it.selectFirst("h3.entry-title a")?.attr("href")?.toAbsolute() ?: return@mapNotNull null
+            val poster = it.selectFirst("img")?.attr("data-src")?.toAbsolute()
+            newMovieSearchResponse(title, href, TvType.Movie) {
+                this.posterUrl = poster
+            }
+        }
+
+        return newHomePageResponse(request.name, items)
+    }
+
+    override suspend fun load(url: String): LoadResponse {
+        val document = app.get(url).document
+        val title = document.selectFirst("h1.entry-title")?.text() ?: "غير معروف"
+        val poster = document.selectFirst(".poster img")?.attr("src")?.toAbsolute()
+        val plot = document.selectFirst(".story p")?.text()
 
         return newMovieLoadResponse(title, url, TvType.Movie, url) {
             this.posterUrl = poster
@@ -67,33 +68,43 @@ class Akwam : MainAPI() {
         }
     }
 
+    // 🧠 New scraping logic for real video links
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val document = app.get(data).document
-        val watchLink = document.selectFirst("a[href*=\"/download/\"]")?.attr("href")?.toAbsolute()
-            ?: return false
+        val doc = app.get(data).document
 
-        val downloadPage = app.get(watchLink).document
-        val videoUrl = Regex("""https:\/\/s\d+\.downet\.net\/download\/[^\"]+\.mp4""")
-            .find(downloadPage.html())
-            ?.value
+        // 1️⃣ Find the "watch" or "download" link on the movie page
+        val downloadLink = doc.selectFirst("a[href*=\"/download/\"]")?.attr("href")?.toAbsolute()
+            ?: doc.selectFirst("a[href*=\"/watch/\"]")?.attr("href")?.toAbsolute()
 
-        if (videoUrl != null) {
-            callback.invoke(
-                newExtractorLink(
-                    name = "Akwam",
-                    source = this.name,
-                    url = videoUrl,
-                    referer = mainUrl,
-                    quality = Qualities.P1080.value,
-                    type = ExtractorLinkType.VIDEO
+        if (downloadLink != null) {
+            val downDoc = app.get(downloadLink).document
+
+            // 2️⃣ Extract .mp4 or .m3u8 links from download page
+            val videoUrls = Regex("""https:\/\/s\d+\.downet\.net\/download\/[^\"]+\.(mp4|m3u8)""")
+                .findAll(downDoc.html())
+                .map { it.value }
+                .toList()
+
+            // 3️⃣ Send links to player
+            videoUrls.forEach { link ->
+                callback.invoke(
+                    ExtractorLink(
+                        source = name,
+                        name = "Akwam",
+                        url = link,
+                        referer = mainUrl,
+                        quality = Qualities.P1080.value,
+                        isM3u8 = link.endsWith(".m3u8")
+                    )
                 )
-            )
-            return true
+            }
+
+            if (videoUrls.isNotEmpty()) return true
         }
 
         return false
