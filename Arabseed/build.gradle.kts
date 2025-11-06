@@ -3,6 +3,7 @@
 plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.serialization")
 }
 
 repositories {
@@ -34,3 +35,4 @@ dependencies {
     implementation("androidx.room:room-ktx:2.8.0")
     cloudstream("com.lagradost:cloudstream3:pre-release")
 }
+
