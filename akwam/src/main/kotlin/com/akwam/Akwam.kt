@@ -19,9 +19,11 @@ class Akwam : MainAPI() {
         }
     }
 
+    // 🔍 Search movies or series
     override suspend fun search(query: String): List<SearchResponse> {
         val url = "$mainUrl/search?q=${query.replace(" ", "+")}"
         val document = app.get(url).document
+
         return document.select("div.entry-box").mapNotNull {
             val title = it.selectFirst("h3.entry-title a")?.text() ?: return@mapNotNull null
             val href = it.selectFirst("h3.entry-title a")?.attr("href")?.toAbsolute() ?: return@mapNotNull null
@@ -34,6 +36,7 @@ class Akwam : MainAPI() {
         }
     }
 
+    // 🏠 Main page sections
     override val mainPage = mainPageOf(
         "$mainUrl/movies" to "أفلام",
         "$mainUrl/series" to "مسلسلات",
@@ -56,24 +59,20 @@ class Akwam : MainAPI() {
         return newHomePageResponse(request.name, items)
     }
 
+    // 📄 Movie or series page
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url).document
         val title = document.selectFirst("h1.entry-title")?.text() ?: "غير معروف"
         val poster = document.selectFirst(".poster img")?.attr("src")?.toAbsolute()
         val plot = document.selectFirst(".story p")?.text()
 
-        val links = document.select("a.btn.btn-download, a.btn.watch-btn")
-            .mapNotNull { it.attr("href").toAbsolute().takeIf { link -> link.isNotBlank() } }
-
         return newMovieLoadResponse(title, url, TvType.Movie, url) {
             this.posterUrl = poster
             this.plot = plot
-            this.recommendations = links.map {
-                newMovieSearchResponse("Link", it, TvType.Movie) { posterUrl = poster }
-            }
         }
     }
 
+    // 🎥 Extract playable links
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -81,8 +80,29 @@ class Akwam : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val document = app.get(data).document
-        val iframe = document.selectFirst("iframe")?.attr("src")?.toAbsolute() ?: return false
-        loadExtractor(iframe, data, subtitleCallback, callback)
-        return true
+        val downloadLink = document.selectFirst("a[href*=\"/download/\"]")?.attr("href")?.toAbsolute()
+
+        if (downloadLink != null) {
+            val downloadPage = app.get(downloadLink).document
+            val videoUrl = Regex("""https:\/\/s\d+\.downet\.net\/download\/[^\"]+\.mp4""")
+                .find(downloadPage.html())
+                ?.value
+
+            if (videoUrl != null) {
+                callback.invoke(
+                    ExtractorLink(
+                        source = this.name,
+                        name = "Akwam Server",
+                        url = videoUrl,
+                        referer = mainUrl,
+                        quality = Qualities.P1080.value,
+                        isM3u8 = false
+                    )
+                )
+                return true
+            }
+        }
+
+        return false
     }
 }
