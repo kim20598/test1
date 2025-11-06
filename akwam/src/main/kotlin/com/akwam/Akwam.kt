@@ -2,6 +2,7 @@ package com.akwam
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
+import org.jsoup.Jsoup
 
 class Akwam : MainAPI() {
     override var mainUrl = "https://ak.sv"
@@ -10,12 +11,78 @@ class Akwam : MainAPI() {
     override val hasMainPage = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
-    // minimal stub for it to load correctly
+    private fun String.toAbsolute(): String {
+        return when {
+            this.startsWith("http") -> this
+            this.startsWith("//") -> "https:$this"
+            else -> "$mainUrl${if (this.startsWith("/")) "" else "/"}$this"
+        }
+    }
+
     override suspend fun search(query: String): List<SearchResponse> {
-        return listOf(
-            newMovieSearchResponse("Test Akwam", "$mainUrl/test", TvType.Movie) {
-                this.posterUrl = "$mainUrl/logo.png"
+        val url = "$mainUrl/search?q=${query.replace(" ", "+")}"
+        val document = app.get(url).document
+        return document.select("div.entry-box").mapNotNull {
+            val title = it.selectFirst("h3.entry-title a")?.text() ?: return@mapNotNull null
+            val href = it.selectFirst("h3.entry-title a")?.attr("href")?.toAbsolute() ?: return@mapNotNull null
+            val poster = it.selectFirst("img")?.attr("data-src")?.toAbsolute()
+            val type = if (href.contains("/movie/")) TvType.Movie else TvType.TvSeries
+
+            newMovieSearchResponse(title, href, type) {
+                this.posterUrl = poster
             }
-        )
+        }
+    }
+
+    override val mainPage = mainPageOf(
+        "$mainUrl/movies" to "أفلام",
+        "$mainUrl/series" to "مسلسلات",
+        "$mainUrl/anime" to "أنمي"
+    )
+
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+        val url = if (page == 1) request.data else "${request.data}/page/$page"
+        val document = app.get(url).document
+
+        val items = document.select("div.entry-box").mapNotNull {
+            val title = it.selectFirst("h3.entry-title a")?.text() ?: return@mapNotNull null
+            val href = it.selectFirst("h3.entry-title a")?.attr("href")?.toAbsolute() ?: return@mapNotNull null
+            val poster = it.selectFirst("img")?.attr("data-src")?.toAbsolute()
+            newMovieSearchResponse(title, href, TvType.Movie) {
+                this.posterUrl = poster
+            }
+        }
+
+        return newHomePageResponse(request.name, items)
+    }
+
+    override suspend fun load(url: String): LoadResponse {
+        val document = app.get(url).document
+        val title = document.selectFirst("h1.entry-title")?.text() ?: "غير معروف"
+        val poster = document.selectFirst(".poster img")?.attr("src")?.toAbsolute()
+        val plot = document.selectFirst(".story p")?.text()
+
+        val links = document.select("a.btn.btn-download, a.btn.watch-btn")
+            .mapNotNull { it.attr("href").toAbsolute().takeIf { link -> link.isNotBlank() } }
+
+        return newMovieLoadResponse(title, url, TvType.Movie, url) {
+            this.posterUrl = poster
+            this.plot = plot
+            this.recommendations = links.map {
+                newMovieSearchResponse("Link", it, TvType.Movie) { posterUrl = poster }
+            }
+        }
+    }
+
+    override suspend fun loadLinks(
+        data: String,
+        isCasting: Boolean,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        val document = app.get(data).document
+        val iframe = document.selectFirst("iframe")?.attr("src")?.toAbsolute() ?: return false
+        loadExtractor(iframe, data, subtitleCallback, callback)
+        return true
     }
 }
