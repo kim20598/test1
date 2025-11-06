@@ -19,7 +19,7 @@ class Akwam : MainAPI() {
         }
     }
 
-    // 🔍 Search movies or series
+    // 🔍 Search
     override suspend fun search(query: String): List<SearchResponse> {
         val url = "$mainUrl/search?q=${query.replace(" ", "+")}"
         val document = app.get(url).document
@@ -36,7 +36,7 @@ class Akwam : MainAPI() {
         }
     }
 
-    // 🏠 Main page sections
+    // 🏠 Main page
     override val mainPage = mainPageOf(
         "$mainUrl/movies" to "أفلام",
         "$mainUrl/series" to "مسلسلات",
@@ -59,7 +59,7 @@ class Akwam : MainAPI() {
         return newHomePageResponse(request.name, items)
     }
 
-    // 📄 Movie or series page
+    // 📄 Movie page
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url).document
         val title = document.selectFirst("h1.entry-title")?.text() ?: "غير معروف"
@@ -72,7 +72,7 @@ class Akwam : MainAPI() {
         }
     }
 
-    // 🎥 Extract playable links
+    // 🎥 Extract video links (fixed version)
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -90,14 +90,15 @@ class Akwam : MainAPI() {
 
             if (videoUrl != null) {
                 callback.invoke(
-                    ExtractorLink(
-                        source = this.name,
+                    newExtractorLink(
+                        source = name,
                         name = "Akwam Server",
                         url = videoUrl,
-                        referer = mainUrl,
-                        quality = Qualities.P1080.value,
-                        isM3u8 = false
-                    )
+                        type = ExtractorLinkType.VIDEO
+                    ) {
+                        this.quality = Qualities.P1080.value
+                        this.referer = mainUrl
+                    }
                 )
                 return true
             }
