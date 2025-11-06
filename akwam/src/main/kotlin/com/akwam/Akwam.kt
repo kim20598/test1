@@ -7,7 +7,7 @@ class Akwam : MainAPI() {
     override var mainUrl = "https://ak.sv"
     override var name = "Akwam"
     override var lang = "ar"
-    override val hasMainPage = false
+    override val hasMainPage = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
     // minimal stub for it to load correctly
