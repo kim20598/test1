@@ -3,10 +3,11 @@
 plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
-    id("org.jetbrains.kotlin.plugin.serialization") // ✅ Added to support @Serializable
+    id("org.jetbrains.kotlin.plugin.serialization") version "1.9.0" // ✅ added version
 }
 
 repositories {
+    google()
     mavenCentral()
     maven { url = uri("https://jitpack.io") }
 }
@@ -31,14 +32,13 @@ android {
 }
 
 dependencies {
-    // Cloudstream dependency configuration
     val cloudstream by configurations
 
     implementation("com.google.android.material:material:1.13.0")
     implementation("androidx.browser:browser:1.9.0")
     implementation("androidx.room:room-ktx:2.8.0")
 
-    // ✅ Added Kotlin serialization dependency
+    // ✅ Add Kotlin serialization library
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
 
     cloudstream("com.lagradost:cloudstream3:pre-release")
