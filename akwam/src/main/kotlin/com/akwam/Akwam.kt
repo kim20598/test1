@@ -2,39 +2,87 @@ package com.akwam
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
+import org.jsoup.Jsoup
 
 class Akwam : MainAPI() {
     override var mainUrl = "https://ak.sv"
     override var name = "Akwam"
-    override val hasMainPage = true
     override var lang = "ar"
+    override val hasMainPage = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
+    private fun String.toAbsolute(): String {
+        return when {
+            this.startsWith("http") -> this
+            this.startsWith("//") -> "https:$this"
+            else -> "$mainUrl${if (this.startsWith("/")) "" else "/"}$this"
+        }
+    }
+
+    override suspend fun search(query: String): List<SearchResponse> {
+        val url = "$mainUrl/search?q=${query.replace(" ", "+")}"
+        val document = app.get(url).document
+        return document.select("div.entry-box").mapNotNull {
+            val title = it.selectFirst("h3.entry-title a")?.text() ?: return@mapNotNull null
+            val href = it.selectFirst("h3.entry-title a")?.attr("href")?.toAbsolute() ?: return@mapNotNull null
+            val poster = it.selectFirst("img")?.attr("data-src")?.toAbsolute()
+            val type = if (href.contains("/movie/")) TvType.Movie else TvType.TvSeries
+
+            newMovieSearchResponse(title, href, type) {
+                this.posterUrl = poster
+            }
+        }
+    }
+
     override val mainPage = mainPageOf(
-        "$mainUrl/movies" to "الأفلام",
-        "$mainUrl/series" to "المسلسلات"
+        "$mainUrl/movies" to "أفلام",
+        "$mainUrl/series" to "مسلسلات",
+        "$mainUrl/anime" to "أنمي"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val doc = app.get(request.data).document
-        val movies = doc.select("div.movieBox, div.seriesBox").mapNotNull {
-            val link = it.selectFirst("a")?.attr("href") ?: return@mapNotNull null
-            val title = it.selectFirst("h3")?.text() ?: "No title"
-            val poster = it.selectFirst("img")?.attr("data-src") ?: ""
-            MovieSearchResponse(title, link, this.name, TvType.Movie, poster)
+        val url = if (page == 1) request.data else "${request.data}/page/$page"
+        val document = app.get(url).document
+
+        val items = document.select("div.entry-box").mapNotNull {
+            val title = it.selectFirst("h3.entry-title a")?.text() ?: return@mapNotNull null
+            val href = it.selectFirst("h3.entry-title a")?.attr("href")?.toAbsolute() ?: return@mapNotNull null
+            val poster = it.selectFirst("img")?.attr("data-src")?.toAbsolute()
+            newMovieSearchResponse(title, href, TvType.Movie) {
+                this.posterUrl = poster
+            }
         }
-        return newHomePageResponse(request.name, movies)
+
+        return newHomePageResponse(request.name, items)
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val doc = app.get(url).document
-        val title = doc.selectFirst("h1")?.text() ?: "Akwam Video"
-        val poster = doc.selectFirst("meta[property=og:image]")?.attr("content")
-        val description = doc.selectFirst("meta[property=og:description]")?.attr("content")
+        val document = app.get(url).document
+        val title = document.selectFirst("h1.entry-title")?.text() ?: "غير معروف"
+        val poster = document.selectFirst(".poster img")?.attr("src")?.toAbsolute()
+        val plot = document.selectFirst(".story p")?.text()
+
+        val links = document.select("a.btn.btn-download, a.btn.watch-btn")
+            .mapNotNull { it.attr("href").toAbsolute().takeIf { link -> link.isNotBlank() } }
 
         return newMovieLoadResponse(title, url, TvType.Movie, url) {
             this.posterUrl = poster
-            this.plot = description
+            this.plot = plot
+            this.recommendations = links.map {
+                newMovieSearchResponse("Link", it, TvType.Movie) { posterUrl = poster }
+            }
         }
+    }
+
+    override suspend fun loadLinks(
+        data: String,
+        isCasting: Boolean,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        val document = app.get(data).document
+        val iframe = document.selectFirst("iframe")?.attr("src")?.toAbsolute() ?: return false
+        loadExtractor(iframe, data, subtitleCallback, callback)
+        return true
     }
 }
