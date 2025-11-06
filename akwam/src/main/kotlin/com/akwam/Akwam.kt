@@ -74,34 +74,33 @@ class Akwam : MainAPI() {
 
     // ✅ LOAD LINKS (direct streaming link)
     override suspend fun loadLinks(
-        data: String,
-        isCasting: Boolean,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ): Boolean {
-        val document = app.get(data).document
-        val watchLink = document.selectFirst("a[href*=\"/download/\"]")?.attr("href")?.toAbsolute()
-            ?: return false
+    data: String,
+    isCasting: Boolean,
+    subtitleCallback: (SubtitleFile) -> Unit,
+    callback: (ExtractorLink) -> Unit
+): Boolean {
+    val document = app.get(data).document
+    val watchLink = document.selectFirst("a[href*=\"/download/\"]")?.attr("href")?.toAbsolute()
+        ?: return false
 
-        val downloadPage = app.get(watchLink).document
-        val videoUrl = Regex("""https:\/\/s\d+\.downet\.net\/download\/[^\"]+\.mp4""")
-            .find(downloadPage.html())
-            ?.value
+    val downloadPage = app.get(watchLink).document
+    val videoUrl = Regex("""https:\/\/s\d+\.downet\.net\/download\/[^\"]+\.mp4""")
+        .find(downloadPage.html())
+        ?.value
 
-        if (videoUrl != null) {
-            callback(
-                newExtractorLink(
-                    this.name,
-                    "Akwam",
-                    videoUrl,
-                    mainUrl,
-                    Qualities.P1080.value,
-                    isM3u8 = false
-                )
+    if (videoUrl != null) {
+        callback.invoke(
+            ExtractorLink(
+                name = "Akwam",
+                source = "Akwam",
+                url = videoUrl,
+                referer = mainUrl,
+                quality = Qualities.P1080.value,
+                type = ExtractorLinkType.DirectFile
             )
-            return true
-        }
-
-        return false
+        )
+        return true
     }
+
+    return false
 }
