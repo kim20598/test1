@@ -70,7 +70,9 @@ class Akwam : MainAPI() {
             document.select("div.episode-list a").mapNotNull { episode ->
                 val episodeTitle = episode.text().trim()
                 val episodeUrl = episode.attr("href").toAbsolute()
-                Episode(episodeUrl, episodeTitle)
+                newEpisode(episodeUrl) {
+                    this.name = episodeTitle
+                }
             }
         } else {
             emptyList()
@@ -94,9 +96,9 @@ class Akwam : MainAPI() {
         // Method 1: Direct video links
         document.select("source[src]").forEach { source ->
             val videoUrl = source.attr("src").toAbsolute()
-            if (videoUrl.isNotBlank() && videoUrl.contains(".mp4") || videoUrl.contains(".m3u8")) {
+            if (videoUrl.isNotBlank() && (videoUrl.contains(".mp4") || videoUrl.contains(".m3u8"))) {
                 callback.invoke(
-                    ExtractorLink(
+                    newExtractorLink(
                         name,
                         name,
                         videoUrl,
@@ -122,7 +124,7 @@ class Akwam : MainAPI() {
             val videoUrl = link.attr("href").toAbsolute()
             if (videoUrl.isNotBlank() && (videoUrl.contains(".mp4") || videoUrl.contains(".m3u8"))) {
                 callback.invoke(
-                    ExtractorLink(
+                    newExtractorLink(
                         name,
                         "Direct Link",
                         videoUrl,
