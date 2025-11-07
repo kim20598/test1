@@ -35,8 +35,12 @@ class EgyDead : MainAPI() {
             val title = it.selectFirst("h1.BottomTitle, h2.BottomTitle, .BottomTitle")?.text()
                 ?: return@mapNotNull null
             val poster = it.selectFirst("img")?.attr("src")?.toAbsolute()
+            val type = when {
+                href.contains("/series/") || href.contains("مسلسل") -> TvType.TvSeries
+                else -> TvType.Movie
+            }
 
-            newMovieSearchResponse(title, href, TvType.Movie) {
+            newMovieSearchResponse(title, href, type) {
                 this.posterUrl = poster
             }
         }
@@ -53,7 +57,10 @@ class EgyDead : MainAPI() {
             val title = it.selectFirst("h1.BottomTitle, h2.BottomTitle, .BottomTitle")?.text()
                 ?: return@mapNotNull null
             val poster = it.selectFirst("img")?.attr("src")?.toAbsolute()
-            val type = if (href.contains("series")) TvType.TvSeries else TvType.Movie
+            val type = when {
+                href.contains("/series/") || href.contains("مسلسل") -> TvType.TvSeries
+                else -> TvType.Movie
+            }
 
             newMovieSearchResponse(title, href, type) {
                 this.posterUrl = poster
@@ -83,14 +90,46 @@ class EgyDead : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val doc = app.get(data).document
-        val links = doc.select(".serversList li, .DownloadLinks li, .WatchServers li").mapNotNull {
-            it.attr("data-link").takeIf { link -> link.isNotBlank() }?.toAbsolute()
+
+        val linkSelectors = listOf(
+            ".serversList li[data-link]",
+            ".WatchServers li[data-link]",
+            ".DownloadLinks a[href]",
+            "a.btn[href*='download']"
+        )
+
+        val links = linkSelectors.flatMap { sel ->
+            doc.select(sel).mapNotNull {
+                (it.attr("data-link").ifBlank { it.attr("href") })
+                    ?.takeIf { l -> l.isNotBlank() }?.toAbsolute()
+            }
+        }.distinct()
+
+        var found = false
+        for (link in links) {
+            when {
+                link.endsWith(".mp4") || link.endsWith(".m3u8") -> {
+                    callback.invoke(
+                        ExtractorLink(
+                            source = name,
+                            name = "EgyDead",
+                            url = link,
+                            referer = mainUrl,
+                            quality = Qualities.P1080.value,
+                            isM3u8 = link.endsWith(".m3u8")
+                        )
+                    )
+                    found = true
+                }
+
+                else -> {
+                    // Pass extractor links to loader
+                    val result = loadExtractor(link, data, subtitleCallback, callback)
+                    if (result) found = true
+                }
+            }
         }
 
-        links.forEach { link ->
-            loadExtractor(link, data, subtitleCallback, callback)
-        }
-
-        return links.isNotEmpty()
+        return found
     }
 }
