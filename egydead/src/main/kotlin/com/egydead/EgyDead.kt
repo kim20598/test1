@@ -108,15 +108,16 @@ class EgyDead : MainAPI() {
         for (link in links) {
             when {
                 link.endsWith(".mp4") || link.endsWith(".m3u8") -> {
-                    callback.invoke(
-                        ExtractorLink(
-                            name = "EgyDead",
+                    callback(
+                        newExtractorLink(
                             source = this.name,
-                            url = link,
-                            referer = mainUrl,
-                            quality = Qualities.P1080.value,
-                            isM3u8 = link.endsWith(".m3u8")
-                        )
+                            name = "EgyDead",
+                            url = link
+                        ) {
+                            this.referer = mainUrl
+                            this.quality = Qualities.P1080.value
+                            this.isM3u8 = link.endsWith(".m3u8")
+                        }
                     )
                     found = true
                 }
