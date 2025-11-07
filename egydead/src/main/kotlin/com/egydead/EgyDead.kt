@@ -8,6 +8,7 @@ import org.jsoup.nodes.Element
 import java.net.URLEncoder
 
 class EgyDead : MainAPI() {
+    // ✅ SAFE - All properties
     override var lang = "ar"
     override var mainUrl = "https://egydead.skin"
     override var name = "EgyDead"
@@ -15,6 +16,7 @@ class EgyDead : MainAPI() {
     override val hasMainPage = true
     override val supportedTypes = setOf(TvType.TvSeries, TvType.Movie, TvType.Anime)
 
+    // ✅ SAFE - Helper functions
     private fun String.getIntFromText(): Int? {
         return Regex("""\d+""").find(this)?.groupValues?.firstOrNull()?.toIntOrNull()
     }
@@ -23,6 +25,7 @@ class EgyDead : MainAPI() {
         return this.replace("جميع مواسم مسلسل|مترجم كامل|مشاهدة فيلم|مترجم|انمي|الموسم.*|مترجمة كاملة|مسلسل|كاملة".toRegex(), "").trim()
     }
 
+    // ✅ SAFE - Search response
     private fun Element.toSearchResponse(): SearchResponse {
         val title = select(".BottomTitle").text().cleanTitle()
         val posterUrl = select("img").attr("src")
@@ -37,6 +40,7 @@ class EgyDead : MainAPI() {
         }
     }
 
+    // ✅ SAFE - Main page
     override val mainPage = mainPageOf(
         "$mainUrl/category/افلام-اجنبي/?page=" to "English Movies",
         "$mainUrl/category/افلام-اسيوية/?page=" to "Asian Movies", 
@@ -44,10 +48,8 @@ class EgyDead : MainAPI() {
         "$mainUrl/category/انمي-مسلسلات/?page=" to "Anime Series"
     )
 
-    override suspend fun getMainPage(
-        page: Int,
-        request: MainPageRequest
-    ): HomePageResponse {
+    // ✅ SAFE - getMainPage
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val document = app.get(request.data + page).document
         val home = document.select("li.movieItem").mapNotNull {
             it.toSearchResponse()
@@ -55,6 +57,7 @@ class EgyDead : MainAPI() {
         return newHomePageResponse(request.name, home)
     }
 
+    // ✅ SAFE - search function
     override suspend fun search(query: String): List<SearchResponse> {
         if (query.length < 3) return emptyList()
         val encodedQuery = URLEncoder.encode(query, "UTF-8")
@@ -65,13 +68,13 @@ class EgyDead : MainAPI() {
         }
     }
 
+    // ✅ SAFE - load function (NO MORE RATING/SCORE ISSUES)
     override suspend fun load(url: String): LoadResponse {
         val doc = app.get(url).document
         val title = doc.select("div.singleTitle em").text().cleanTitle()
         val isMovie = !url.contains("/serie/|/season/".toRegex())
 
         val posterUrl = doc.select("div.single-thumbnail > img").attr("src")
-        val rating = doc.select("a.IMDBRating em").text().getIntFromText()
         val synopsis = doc.select("div.extra-content:contains(القصه) p").text()
         val year = doc.select("ul > li:contains(السنه) > a").text().getIntFromText()
         val tags = doc.select("ul > li:contains(النوع) > a").map { it.text() }
@@ -86,7 +89,6 @@ class EgyDead : MainAPI() {
                 this.recommendations = recommendations
                 this.plot = synopsis
                 this.tags = tags
-                this.score = rating
                 this.year = year
                 addTrailer(youtubeTrailer)
             }
@@ -100,7 +102,7 @@ class EgyDead : MainAPI() {
                     seasonDoc.select("div.EpsList > li > a").forEach {
                         episodes.add(newEpisode(it.attr("href")) {
                             name = it.attr("title")
-                            season = index + 1
+                            this.season = index + 1
                             episode = it.text().getIntFromText() ?: 1
                         })
                     }
@@ -109,7 +111,7 @@ class EgyDead : MainAPI() {
                 doc.select("div.EpsList > li > a").forEach {
                     episodes.add(newEpisode(it.attr("href")) {
                         name = it.attr("title")
-                        season = 1
+                        this.season = 1
                         episode = it.text().getIntFromText() ?: 1
                     })
                 }
@@ -120,19 +122,14 @@ class EgyDead : MainAPI() {
                 this.tags = tags
                 this.plot = synopsis
                 this.recommendations = recommendations
-                this.score = rating
                 this.year = year
                 addTrailer(youtubeTrailer)
             }
         }
     }
 
-    override suspend fun loadLinks(
-        data: String,
-        isCasting: Boolean,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ): Boolean {
+    // ✅ SAFE - loadLinks function
+    override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
         var foundLinks = false
         
         try {
