@@ -23,10 +23,6 @@ class Akwam : MainAPI() {
         return Regex("""(\d+)""").find(this)?.groupValues?.get(1)?.toIntOrNull()
     }
 
-    private fun String.toRatingInt(): Int? {
-        return this.trim().toIntOrNull()
-    }
-
     override suspend fun search(query: String): List<SearchResponse> {
         val url = "$mainUrl/search?q=${query.replace(" ", "+")}"
         val document = app.get(url).document
@@ -68,67 +64,13 @@ class Akwam : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         val doc = app.get(url).document
-        val mesEl = doc.select("#downloads > h2 > span").isNotEmpty()
-        val mesSt = if(mesEl) true else false
-        val isMovie = mesSt
         val title = doc.select("h1.entry-title").text()
         val posterUrl = doc.select("picture > img").attr("src").toAbsolute()
-
-        val year = doc.select("div.font-size-16.text-white.mt-2").firstOrNull {
-            it.text().contains("السنة")
-        }?.text()?.getIntFromText()
-
-        val duration = doc.select("div.font-size-16.text-white.mt-2").firstOrNull {
-            it.text().contains("مدة الفيلم")
-        }?.text()?.getIntFromText()
-
         val synopsis = doc.select("div.widget-body p:first-child").text()
 
-        val rating = doc.select("span.mx-2").text().split("/").lastOrNull()?.toRatingInt()
-
-        val tags = doc.select("div.font-size-16.d-flex.align-items-center.mt-3 > a").map {
-            it.text()
-        }
-
-        val actors = doc.select("div.widget-body > div > div.entry-box > a").mapNotNull {
-            val name = it.selectFirst("div > .entry-title")?.text() ?: return@mapNotNull null
-            val image = it.selectFirst("div > img")?.attr("src")?.toAbsolute() ?: return@mapNotNull null
-            Actor(name, image)
-        }
-
-        val recommendations = doc.select("div > div.widget-body > div.row > div > div.entry-box").mapNotNull {
-            val recTitle = it.selectFirst("div.entry-body > .entry-title > .text-white") ?: return@mapNotNull null
-            val href = recTitle.attr("href").toAbsolute() ?: return@mapNotNull null
-            val name = recTitle.text() ?: return@mapNotNull null
-            val poster = it.selectFirst(".entry-image > a > picture > img")?.attr("data-src")?.toAbsolute() ?: return@mapNotNull null
-            newMovieSearchResponse(name, href, TvType.Movie) {
-                this.posterUrl = poster
-            }
-        }
-
-        return if (isMovie) {
-            newMovieLoadResponse(title, url, TvType.Movie, url) {
-                this.posterUrl = posterUrl
-                this.year = year
-                this.plot = synopsis
-                this.rating = rating
-                this.tags = tags
-                this.duration = duration
-                this.recommendations = recommendations
-                addActors(actors)
-            }
-        } else {
-            // For TV series, we'll keep it simple for now
-            newMovieLoadResponse(title, url, TvType.TvSeries, url) {
-                this.posterUrl = posterUrl
-                this.year = year
-                this.plot = synopsis
-                this.rating = rating
-                this.tags = tags
-                this.duration = duration
-                this.recommendations = recommendations
-                addActors(actors)
-            }
+        return newMovieLoadResponse(title, url, TvType.Movie, url) {
+            this.posterUrl = posterUrl
+            this.plot = synopsis
         }
     }
 
@@ -170,20 +112,13 @@ class Akwam : MainAPI() {
             }
         }.flatten()
 
-        links.map { linkPair ->
+        links.apmap { linkPair ->
             val linkDoc = app.get(linkPair.first).document
             val button = linkDoc.select("div.btn-loader > a")
             val url = button.attr("href").toAbsolute()
 
-            callback.invoke(
-                ExtractorLink(
-                    this.name,
-                    this.name,
-                    url,
-                    this.mainUrl,
-                    linkPair.second.value
-                )
-            )
+            // Use loadExtractor instead of manual ExtractorLink
+            loadExtractor(url, data, subtitleCallback, callback)
         }
         return true
     }
