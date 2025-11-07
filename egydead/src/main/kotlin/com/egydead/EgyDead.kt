@@ -110,12 +110,14 @@ class EgyDead : MainAPI() {
             when {
                 link.endsWith(".mp4") || link.endsWith(".m3u8") -> {
                     callback.invoke(
-                        newExtractorLink(name) {
-                            this.url = link
-                            this.referer = mainUrl
-                            this.quality = getQualityFromName("1080p")
-                            this.isM3u8 = link.endsWith(".m3u8")
-                        }
+                        ExtractorLink(
+                            this.name,
+                            "EgyDead",
+                            link,
+                            mainUrl,
+                            Qualities.P1080.value,
+                            isM3u8 = link.endsWith(".m3u8")
+                        )
                     )
                     found = true
                 }
