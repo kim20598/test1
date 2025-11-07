@@ -193,7 +193,19 @@ class EgyDead : MainAPI() {
     ): Boolean {
         val document = app.get(data).document
 
-        // Method 1: Look for embedded iframes (BUT FILTER YOUTUBE)
+        // METHOD 1: Extract from download servers list
+        document.select("ul.donwload-servers-list li").forEach { serverItem ->
+            val serverName = serverItem.selectFirst(".ser-name")?.text()?.trim() ?: "Unknown"
+            val quality = serverItem.selectFirst(".server-info em")?.text()?.trim() ?: "Unknown"
+            val downloadLink = serverItem.selectFirst("a.ser-link")?.attr("href")?.toAbsolute()
+            
+            if (!downloadLink.isNullOrBlank()) {
+                // Send to CloudStream's extractor system
+                loadExtractor(downloadLink, data, subtitleCallback, callback)
+            }
+        }
+
+        // METHOD 2: Look for embedded iframes (fallback)
         document.select("iframe[src]").forEach { iframe ->
             val iframeUrl = iframe.attr("src").toAbsolute()
             if (iframeUrl.isNotBlank() && !iframeUrl.contains("youtube", ignoreCase = true)) {
@@ -201,7 +213,7 @@ class EgyDead : MainAPI() {
             }
         }
 
-        // Method 2: Look for video sources
+        // METHOD 3: Look for direct video sources
         document.select("source[src]").forEach { source ->
             val videoUrl = source.attr("src").toAbsolute()
             if (videoUrl.isNotBlank() && (videoUrl.contains(".mp4") || videoUrl.contains(".m3u8"))) {
@@ -218,17 +230,6 @@ class EgyDead : MainAPI() {
                         this.type = if (videoUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
                     }
                 )
-            }
-        }
-
-        // Method 3: Look for video links in scripts (FILTER YOUTUBE)
-        document.select("script").forEach { script ->
-            val scriptContent = script.html()
-            Regex("""(https?:[^"'\s]*\.(?:mp4|m3u8)[^"'\s]*)""").findAll(scriptContent).forEach { match ->
-                val videoUrl = match.groupValues[1].toAbsolute()
-                if (!videoUrl.contains("youtube", ignoreCase = true)) {
-                    loadExtractor(videoUrl, data, subtitleCallback, callback)
-                }
             }
         }
 
