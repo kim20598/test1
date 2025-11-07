@@ -37,11 +37,17 @@ class EgyDead : MainAPI() {
         
         if (title.isBlank() || href.isBlank()) return null
 
-        // Better type detection
+        // BETTER TYPE DETECTION FOR MAIN PAGE
         val type = when {
-            href.contains("/episode/") || href.contains("/season/") || 
-            link.selectFirst(".episode-count, .season-count") != null -> TvType.TvSeries
-            else -> TvType.Movie
+            // If URL clearly indicates series/episodes
+            href.contains("/episode/") || href.contains("/season/") -> TvType.TvSeries
+            // If URL indicates movies
+            href.contains("/movie/") -> TvType.Movie
+            // Check the section name from main page
+            link.parents().any { it.hasClass("episode") || it.selectFirst(".episode-count") != null } -> TvType.TvSeries
+            link.parents().any { it.hasClass("movie") || it.selectFirst(".movie-meta") != null } -> TvType.Movie
+            // Default based on main page section
+            else -> TvType.Movie // Default fallback
         }
 
         return newMovieSearchResponse(title, href, type) {
@@ -60,8 +66,22 @@ class EgyDead : MainAPI() {
         val url = if (page > 1) "${request.data}?page=$page" else request.data
         val document = app.get(url).document
 
-        val items = document.select("li.movieItem").mapNotNull { 
-            it.toSearchResponse() 
+        val items = document.select("li.movieItem").mapNotNull { element ->
+            // PASS THE SECTION NAME TO HELP WITH TYPE DETECTION
+            val searchResponse = element.toSearchResponse()
+            
+            // OVERRIDE TYPE BASED ON MAIN PAGE SECTION
+            when (request.name) {
+                "أحدث الحلقات", "أحدث المواسم" -> {
+                    // Force TV series for episodes/seasons sections
+                    searchResponse?.copy(type = TvType.TvSeries)
+                }
+                "أحدث الأفلام" -> {
+                    // Force movies for movies section
+                    searchResponse?.copy(type = TvType.Movie)
+                }
+                else -> searchResponse // Keep original detection for "المضاف حديثا"
+            }
         }
 
         return newHomePageResponse(request.name, items)
@@ -87,21 +107,31 @@ class EgyDead : MainAPI() {
         val poster = document.selectFirst("img[src*='wp-content']")?.attr("src")?.toAbsolute()
         val plot = document.selectFirst("div.entry-content p")?.text()?.trim()
 
-        // BETTER TYPE DETECTION - Check for movie indicators
-        val isMovie = document.selectFirst("a[href*='/movie/'], .movie-meta, .film-meta") != null ||
-                     title.contains("فيلم") || // "film" in Arabic
-                     url.contains("/movie/") ||
-                     document.select("div.episode-list, .episodes-list").isEmpty()
+        // IMPROVED TYPE DETECTION
+        val isMovie = when {
+            // Clear movie indicators
+            url.contains("/movie/") -> true
+            document.selectFirst("a[href*='/movie/']") != null -> true
+            title.contains("فيلم") -> true
+            document.selectFirst(".movie-meta, .film-meta") != null -> true
+            
+            // Clear series indicators
+            url.contains("/episode/") || url.contains("/season/") -> false
+            document.selectFirst(".episode-list, .episodes-list, .season-list") != null -> false
+            document.select("a[href*='/episode/'], a[href*='/season/']").isNotEmpty() -> false
+            
+            // Default to movie if uncertain
+            else -> true
+        }
 
-        // BETTER EPISODE PARSING - Only for actual series
+        // BETTER EPISODE PARSING
         val episodes = if (!isMovie) {
-            document.select("div.episode-list a, .episodes-list a, a.episode-link").mapNotNull { episodeLink ->
+            document.select("div.episode-list a, .episodes-list a, a.episode-link, a[href*='/episode/']").mapNotNull { episodeLink ->
                 val episodeUrl = episodeLink.attr("href").toAbsolute()
                 val episodeTitle = episodeLink.ownText().trim().ifBlank { 
                     episodeLink.text().trim() 
                 }
-                // Clean episode title and extract number
-                val cleanTitle = episodeTitle.replace(Regex("""[\s\.]+"""), " ").trim()
+                val cleanTitle = episodeTitle.replace(Regex("""<[^>]*>"""), "").trim() // Remove HTML tags
                 val episodeNumber = extractEpisodeNumber(cleanTitle) ?: 1
 
                 newEpisode(episodeUrl) {
@@ -109,12 +139,19 @@ class EgyDead : MainAPI() {
                     this.episode = episodeNumber
                     this.posterUrl = poster
                 }
+            }.ifEmpty {
+                // Fallback: if no episodes found but it's a series, create default episodes
+                listOf(newEpisode(url) {
+                    this.name = "الحلقة 1"
+                    this.episode = 1
+                    this.posterUrl = poster
+                })
             }
         } else {
             emptyList()
         }
 
-        return if (!isMovie && episodes.isNotEmpty()) {
+        return if (!isMovie) {
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
                 this.plot = plot
@@ -128,7 +165,6 @@ class EgyDead : MainAPI() {
     }
 
     private fun extractEpisodeNumber(text: String): Int? {
-        // Match patterns like: "الحلقة 1", "Episode 1", "1", "EP 1", etc.
         val patterns = listOf(
             Regex("""الحلقة\s*(\d+)"""),
             Regex("""حلقة\s*(\d+)"""),
@@ -157,10 +193,10 @@ class EgyDead : MainAPI() {
     ): Boolean {
         val document = app.get(data).document
 
-        // Method 1: Look for embedded iframes
+        // Method 1: Look for embedded iframes (BUT FILTER YOUTUBE)
         document.select("iframe[src]").forEach { iframe ->
             val iframeUrl = iframe.attr("src").toAbsolute()
-            if (iframeUrl.isNotBlank()) {
+            if (iframeUrl.isNotBlank() && !iframeUrl.contains("youtube", ignoreCase = true)) {
                 loadExtractor(iframeUrl, data, subtitleCallback, callback)
             }
         }
@@ -185,12 +221,14 @@ class EgyDead : MainAPI() {
             }
         }
 
-        // Method 3: Look for video links in scripts
+        // Method 3: Look for video links in scripts (FILTER YOUTUBE)
         document.select("script").forEach { script ->
             val scriptContent = script.html()
             Regex("""(https?:[^"'\s]*\.(?:mp4|m3u8)[^"'\s]*)""").findAll(scriptContent).forEach { match ->
                 val videoUrl = match.groupValues[1].toAbsolute()
-                loadExtractor(videoUrl, data, subtitleCallback, callback)
+                if (!videoUrl.contains("youtube", ignoreCase = true)) {
+                    loadExtractor(videoUrl, data, subtitleCallback, callback)
+                }
             }
         }
 
