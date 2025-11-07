@@ -5,7 +5,7 @@ import com.lagradost.cloudstream3.utils.*
 import org.jsoup.Jsoup
 
 class Fushaar : MainAPI() {
-    override var mainUrl = "https://www.fushaar.com"
+    override var mainUrl = "https://www.fushaar.live"
     override var name = "Fushaar"
     override var lang = "ar"
     override val hasMainPage = true
