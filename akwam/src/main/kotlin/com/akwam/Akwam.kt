@@ -81,7 +81,10 @@ class Akwam : MainAPI() {
         return newMovieLoadResponse(title, url, TvType.Movie, url) {
             this.posterUrl = poster
             this.plot = plot
-            this.episodes = episodes
+            // For TvSeries, we need to use the correct builder
+            if (episodes.isNotEmpty()) {
+                this.episodes = episodes
+            }
         }
     }
 
@@ -98,13 +101,13 @@ class Akwam : MainAPI() {
             val videoUrl = source.attr("src").toAbsolute()
             if (videoUrl.isNotBlank() && (videoUrl.contains(".mp4") || videoUrl.contains(".m3u8"))) {
                 callback.invoke(
-                    newExtractorLink(
+                    ExtractorLink(
                         name,
                         name,
                         videoUrl,
-                        referer = mainUrl,
-                        quality = Qualities.Unknown.value,
-                        isM3u8 = videoUrl.contains(".m3u8")
+                        "$mainUrl/",
+                        Qualities.Unknown.value,
+                        videoUrl.contains(".m3u8")
                     )
                 )
             }
@@ -124,13 +127,13 @@ class Akwam : MainAPI() {
             val videoUrl = link.attr("href").toAbsolute()
             if (videoUrl.isNotBlank() && (videoUrl.contains(".mp4") || videoUrl.contains(".m3u8"))) {
                 callback.invoke(
-                    newExtractorLink(
+                    ExtractorLink(
                         name,
                         "Direct Link",
                         videoUrl,
-                        referer = mainUrl,
-                        quality = Qualities.Unknown.value,
-                        isM3u8 = videoUrl.contains(".m3u8")
+                        "$mainUrl/",
+                        Qualities.Unknown.value,
+                        videoUrl.contains(".m3u8")
                     )
                 )
             }
