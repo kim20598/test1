@@ -37,10 +37,10 @@ class EgyDead : MainAPI() {
         
         if (title.isBlank() || href.isBlank()) return null
 
-        // Determine type based on URL and content
+        // Better type detection
         val type = when {
-            href.contains("/episode/") -> TvType.TvSeries
-            href.contains("/season/") -> TvType.TvSeries
+            href.contains("/episode/") || href.contains("/season/") || 
+            link.selectFirst(".episode-count, .season-count") != null -> TvType.TvSeries
             else -> TvType.Movie
         }
 
@@ -87,22 +87,34 @@ class EgyDead : MainAPI() {
         val poster = document.selectFirst("img[src*='wp-content']")?.attr("src")?.toAbsolute()
         val plot = document.selectFirst("div.entry-content p")?.text()?.trim()
 
-        // Check if it's a series by looking for episodes
-        val episodes = document.select("div.episode-list a, a[href*='/episode/']").mapNotNull { episodeLink ->
-            val episodeUrl = episodeLink.attr("href").toAbsolute()
-            val episodeTitle = episodeLink.text().trim()
-            val episodeNumber = episodeTitle.getIntFromText()
+        // BETTER TYPE DETECTION - Check for movie indicators
+        val isMovie = document.selectFirst("a[href*='/movie/'], .movie-meta, .film-meta") != null ||
+                     title.contains("فيلم") || // "film" in Arabic
+                     url.contains("/movie/") ||
+                     document.select("div.episode-list, .episodes-list").isEmpty()
 
-            newEpisode(episodeUrl) {
-                name = episodeTitle
-                episode = episodeNumber
-                posterUrl = poster
+        // BETTER EPISODE PARSING - Only for actual series
+        val episodes = if (!isMovie) {
+            document.select("div.episode-list a, .episodes-list a, a.episode-link").mapNotNull { episodeLink ->
+                val episodeUrl = episodeLink.attr("href").toAbsolute()
+                val episodeTitle = episodeLink.ownText().trim().ifBlank { 
+                    episodeLink.text().trim() 
+                }
+                // Clean episode title and extract number
+                val cleanTitle = episodeTitle.replace(Regex("""[\s\.]+"""), " ").trim()
+                val episodeNumber = extractEpisodeNumber(cleanTitle) ?: 1
+
+                newEpisode(episodeUrl) {
+                    this.name = cleanTitle.ifBlank { "الحلقة $episodeNumber" }
+                    this.episode = episodeNumber
+                    this.posterUrl = poster
+                }
             }
+        } else {
+            emptyList()
         }
 
-        val isSeries = episodes.isNotEmpty() || url.contains("/episode/") || url.contains("/season/")
-
-        return if (isSeries) {
+        return if (!isMovie && episodes.isNotEmpty()) {
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
                 this.plot = plot
@@ -113,6 +125,24 @@ class EgyDead : MainAPI() {
                 this.plot = plot
             }
         }
+    }
+
+    private fun extractEpisodeNumber(text: String): Int? {
+        // Match patterns like: "الحلقة 1", "Episode 1", "1", "EP 1", etc.
+        val patterns = listOf(
+            Regex("""الحلقة\s*(\d+)"""),
+            Regex("""حلقة\s*(\d+)"""),
+            Regex("""Episode\s*(\d+)""", RegexOption.IGNORE_CASE),
+            Regex("""EP\s*(\d+)""", RegexOption.IGNORE_CASE),
+            Regex("""\b(\d+)\b""")
+        )
+        
+        patterns.forEach { pattern ->
+            pattern.find(text)?.groupValues?.get(1)?.toIntOrNull()?.let {
+                return it
+            }
+        }
+        return null
     }
 
     private fun String.getIntFromText(): Int? {
@@ -158,7 +188,6 @@ class EgyDead : MainAPI() {
         // Method 3: Look for video links in scripts
         document.select("script").forEach { script ->
             val scriptContent = script.html()
-            // Look for MP4 and M3U8 links in scripts
             Regex("""(https?:[^"'\s]*\.(?:mp4|m3u8)[^"'\s]*)""").findAll(scriptContent).forEach { match ->
                 val videoUrl = match.groupValues[1].toAbsolute()
                 loadExtractor(videoUrl, data, subtitleCallback, callback)
