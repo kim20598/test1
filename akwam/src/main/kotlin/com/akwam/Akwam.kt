@@ -3,6 +3,7 @@ package com.akwam
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import org.jsoup.nodes.Element
+import com.lagradost.cloudstream3.network.CloudflareKiller
 
 class Akwam : MainAPI() {
     override var mainUrl = "https://ak.sv"
@@ -10,6 +11,9 @@ class Akwam : MainAPI() {
     override var lang = "ar"
     override val hasMainPage = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
+    
+    // Add Cloudflare bypass
+    private val cloudflareKiller = CloudflareKiller()
     
     private fun String.toAbsolute(): String {
         return when {
@@ -23,10 +27,9 @@ class Akwam : MainAPI() {
         return Regex("""\d+""").find(this)?.groupValues?.firstOrNull()?.toIntOrNull()
     }
 
-    // Keep our simple search (it works)
     override suspend fun search(query: String): List<SearchResponse> {
         val url = "$mainUrl/search?q=${query.replace(" ", "+")}"
-        val document = app.get(url).document
+        val document = app.get(url, cloudflare = true).document // Add cloudflare bypass
         
         return document.select("div.entry-box").mapNotNull {
             val title = it.selectFirst("h3.entry-title a")?.text() ?: return@mapNotNull null
@@ -40,7 +43,6 @@ class Akwam : MainAPI() {
         }
     }
 
-    // Keep our simple main page (it works)
     override val mainPage = mainPageOf(
         "$mainUrl/movies" to "أفلام",
         "$mainUrl/series" to "مسلسلات", 
@@ -49,7 +51,7 @@ class Akwam : MainAPI() {
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val url = if (page == 1) request.data else "${request.data}/page/$page"
-        val document = app.get(url).document
+        val document = app.get(url, cloudflare = true).document // Add cloudflare bypass
         
         val items = document.select("div.entry-box").mapNotNull {
             val title = it.selectFirst("h3.entry-title a")?.text() ?: return@mapNotNull null
@@ -64,9 +66,8 @@ class Akwam : MainAPI() {
         return newHomePageResponse(request.name, items)
     }
 
-    // Keep our simple load (it works)
     override suspend fun load(url: String): LoadResponse {
-        val document = app.get(url).document
+        val document = app.get(url, cloudflare = true).document // Add cloudflare bypass
         val title = document.selectFirst("h1.entry-title")?.text() ?: "غير معروف"
         val poster = document.selectFirst(".poster img")?.attr("src")?.toAbsolute()
         val plot = document.selectFirst(".story p")?.text()
@@ -77,14 +78,13 @@ class Akwam : MainAPI() {
         }
     }
 
-    // ONLY CHANGE THIS - Use the proven loadLinks logic from old provider
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val doc = app.get(data).document
+        val doc = app.get(data, cloudflare = true).document // Add cloudflare bypass
 
         // Extract all quality links using proven selectors
         val links = doc.select("div.tab-content.quality").map { element ->
@@ -104,7 +104,7 @@ class Akwam : MainAPI() {
 
         // Process each download link using proven pattern
         links.forEach { (url, quality) ->
-            val linkDoc = app.get(url).document
+            val linkDoc = app.get(url, cloudflare = true).document // Add cloudflare bypass
             val button = linkDoc.select("div.btn-loader > a")
             val finalUrl = button.attr("href").toAbsolute()
 
@@ -115,7 +115,6 @@ class Akwam : MainAPI() {
         return true
     }
 
-    // Quality detection from old provider
     private fun getQualityFromId(id: Int?): Qualities {
         return when (id) {
             2 -> Qualities.P360
