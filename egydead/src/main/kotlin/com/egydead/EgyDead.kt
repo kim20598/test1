@@ -110,20 +110,17 @@ class EgyDead : MainAPI() {
             when {
                 link.endsWith(".mp4") || link.endsWith(".m3u8") -> {
                     callback.invoke(
-                        ExtractorLink(
-                            source = name,
-                            name = "EgyDead",
-                            url = link,
-                            referer = mainUrl,
-                            quality = Qualities.P1080.value,
-                            isM3u8 = link.endsWith(".m3u8")
-                        )
+                        newExtractorLink(name) {
+                            this.url = link
+                            this.referer = mainUrl
+                            this.quality = getQualityFromName("1080p")
+                            this.isM3u8 = link.endsWith(".m3u8")
+                        }
                     )
                     found = true
                 }
 
                 else -> {
-                    // Pass extractor links to loader
                     val result = loadExtractor(link, data, subtitleCallback, callback)
                     if (result) found = true
                 }
