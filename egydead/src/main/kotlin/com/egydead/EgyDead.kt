@@ -32,8 +32,10 @@ class EgyDead : MainAPI() {
 
         val items = doc.select("li.movieItem a").mapNotNull {
             val href = it.attr("href").toAbsolute()
-            val title = it.selectFirst("h1.BottomTitle")?.text() ?: return@mapNotNull null
+            val title = it.selectFirst("h1.BottomTitle, h2.BottomTitle, .BottomTitle")?.text()
+                ?: return@mapNotNull null
             val poster = it.selectFirst("img")?.attr("src")?.toAbsolute()
+
             newMovieSearchResponse(title, href, TvType.Movie) {
                 this.posterUrl = poster
             }
@@ -48,9 +50,11 @@ class EgyDead : MainAPI() {
 
         return doc.select("li.movieItem a").mapNotNull {
             val href = it.attr("href").toAbsolute()
-            val title = it.selectFirst("h1.BottomTitle")?.text() ?: return@mapNotNull null
+            val title = it.selectFirst("h1.BottomTitle, h2.BottomTitle, .BottomTitle")?.text()
+                ?: return@mapNotNull null
             val poster = it.selectFirst("img")?.attr("src")?.toAbsolute()
-            val type = if (href.contains("/movie/")) TvType.Movie else TvType.TvSeries
+            val type = if (href.contains("series")) TvType.TvSeries else TvType.Movie
+
             newMovieSearchResponse(title, href, type) {
                 this.posterUrl = poster
             }
@@ -59,11 +63,14 @@ class EgyDead : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         val doc = app.get(url).document
-        val title = doc.selectFirst(".singleTitle em")?.text() ?: "غير معروف"
-        val poster = doc.selectFirst(".single-thumbnail img")?.attr("src")?.toAbsolute()
-        val plot = doc.selectFirst(".extra-content p")?.text()
+        val title = doc.selectFirst(".singleTitle em, .postTitle, h1.entry-title")?.text() ?: "غير معروف"
+        val poster = doc.selectFirst(".single-thumbnail img, .poster img, img.wp-post-image")
+            ?.attr("src")?.toAbsolute()
+        val plot = doc.selectFirst(".extra-content p, .story p, .postContent p")?.text()
 
-        return newMovieLoadResponse(title, url, TvType.Movie, url) {
+        val type = if (url.contains("series")) TvType.TvSeries else TvType.Movie
+
+        return newMovieLoadResponse(title, url, type, url) {
             this.posterUrl = poster
             this.plot = plot
         }
@@ -76,7 +83,7 @@ class EgyDead : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val doc = app.get(data).document
-        val links = doc.select(".serversList li").mapNotNull {
+        val links = doc.select(".serversList li, .DownloadLinks li, .WatchServers li").mapNotNull {
             it.attr("data-link").takeIf { link -> link.isNotBlank() }?.toAbsolute()
         }
 
