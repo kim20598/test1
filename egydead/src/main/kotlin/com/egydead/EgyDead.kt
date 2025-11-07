@@ -2,7 +2,6 @@ package com.egydead
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
-import org.jsoup.Jsoup
 
 class EgyDead : MainAPI() {
     override var mainUrl = "https://egydead.skin"
@@ -63,11 +62,13 @@ class EgyDead : MainAPI() {
         val poster = doc.selectFirst(".single-thumbnail img")?.attr("src")?.toAbsolute()
         val plot = doc.selectFirst(".extra-content p")?.text()
 
-        // Check if it’s a TV series with episodes
+        // Check if it's a TV series with episodes
         val episodes = doc.select(".episodes-list .EpsList li a").map {
             val epUrl = it.attr("href").toAbsolute()
             val name = it.text()
-            Episode(epUrl, name = name)
+            newEpisode(epUrl) {
+                this.name = name
+            }
         }
 
         return if (episodes.isNotEmpty()) {
