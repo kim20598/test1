@@ -28,7 +28,7 @@ class EgyDead : MainAPI() {
         }?.toAbsolute()
     }
 
-    private fun Element.toSearchResponse(): SearchResponse? {
+    private fun Element.toSearchResponse(requestName: String? = null): SearchResponse? {
         val link = this.selectFirst("a") ?: return null
         val href = link.attr("href").toAbsolute()
         val title = link.selectFirst("h1.BottomTitle")?.text()?.trim() 
@@ -37,17 +37,19 @@ class EgyDead : MainAPI() {
         
         if (title.isBlank() || href.isBlank()) return null
 
-        // BETTER TYPE DETECTION FOR MAIN PAGE
+        // BETTER TYPE DETECTION WITH SECTION AWARENESS
         val type = when {
-            // If URL clearly indicates series/episodes
+            // Force type based on main page section
+            requestName == "أحدث الحلقات" || requestName == "أحدث المواسم" -> TvType.TvSeries
+            requestName == "أحدث الأفلام" -> TvType.Movie
+            // URL-based detection
             href.contains("/episode/") || href.contains("/season/") -> TvType.TvSeries
-            // If URL indicates movies
             href.contains("/movie/") -> TvType.Movie
-            // Check the section name from main page
+            // DOM-based detection
             link.parents().any { it.hasClass("episode") || it.selectFirst(".episode-count") != null } -> TvType.TvSeries
             link.parents().any { it.hasClass("movie") || it.selectFirst(".movie-meta") != null } -> TvType.Movie
-            // Default based on main page section
-            else -> TvType.Movie // Default fallback
+            // Default fallback
+            else -> TvType.Movie
         }
 
         return newMovieSearchResponse(title, href, type) {
@@ -67,21 +69,8 @@ class EgyDead : MainAPI() {
         val document = app.get(url).document
 
         val items = document.select("li.movieItem").mapNotNull { element ->
-            // PASS THE SECTION NAME TO HELP WITH TYPE DETECTION
-            val searchResponse = element.toSearchResponse()
-            
-            // OVERRIDE TYPE BASED ON MAIN PAGE SECTION
-            when (request.name) {
-                "أحدث الحلقات", "أحدث المواسم" -> {
-                    // Force TV series for episodes/seasons sections
-                    searchResponse?.copy(type = TvType.TvSeries)
-                }
-                "أحدث الأفلام" -> {
-                    // Force movies for movies section
-                    searchResponse?.copy(type = TvType.Movie)
-                }
-                else -> searchResponse // Keep original detection for "المضاف حديثا"
-            }
+            // PASS SECTION NAME TO HELP WITH TYPE DETECTION
+            element.toSearchResponse(request.name)
         }
 
         return newHomePageResponse(request.name, items)
@@ -179,10 +168,6 @@ class EgyDead : MainAPI() {
             }
         }
         return null
-    }
-
-    private fun String.getIntFromText(): Int? {
-        return Regex("""\d+""").find(this)?.groupValues?.firstOrNull()?.toIntOrNull()
     }
 
     override suspend fun loadLinks(
