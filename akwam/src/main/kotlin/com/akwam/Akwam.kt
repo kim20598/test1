@@ -10,10 +10,7 @@ import java.net.URLEncoder
 import com.lagradost.cloudstream3.utils.newExtractorLink
 import com.lagradost.cloudstream3.utils.getQualityFromName
 import org.jsoup.nodes.Element
-import com.lagradost.cloudstream3.utils.AppUtils.toJson
-import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import kotlin.Pair
-import kotlinx.coroutines.async
 
 class Akwam : MainAPI() {
     data class PosterData(val posterUrl: String?)
@@ -43,13 +40,9 @@ class Akwam : MainAPI() {
                 }
             } else base
 
-            val doc = kotlinx.coroutines.withTimeoutOrNull(10_000L) {
-                try {
-                    app.get(pageUrl).document
-                } catch (e: Exception) {
-                    null
-                }
-            } ?: throw ErrorLoadingException("failed to load category page")
+            val doc = kotlin.runCatching { 
+                app.get(pageUrl).document 
+            }.getOrNull() ?: throw ErrorLoadingException("failed to load category page")
 
             val list = doc.select("div.col-lg-auto.col-md-4.col-6").mapNotNull { el ->
                 val a = el.selectFirst("h3.entry-title a") ?: return@mapNotNull null
@@ -64,23 +57,13 @@ class Akwam : MainAPI() {
             }
 
             if (list.isEmpty()) throw ErrorLoadingException()
-            return HomePageResponse(listOf(HomePageList(request.name ?: "قائمة", list)))
+            return newHomePageResponse(request.name ?: "قائمة", list)
         }
 
         val urls = listOf(
             "$mainUrl/movies" to "أحدث الأفلام",
             "$mainUrl/series" to "أحدث المسلسلات",
-            "$mainUrl/shows" to "العروض",
-            "$mainUrl/series?section=29&category=0&rating=0&year=0&language=0&formats=0&quality=0" to "مسلسلات عربي",
-            "$mainUrl/series?section=32&category=0&rating=0&year=0&language=0&formats=0&quality=0" to "مسلسلات تركي",
-            "$mainUrl/series?section=33&category=0&rating=0&year=0&language=0&formats=0&quality=0" to "مسلسلات اسيوية",
-            "$mainUrl/series?section=30&category=0&rating=0&year=0&language=0&formats=0&quality=0" to "مسلسلات اجنبي",
-            "$mainUrl/series?section=31&category=0&rating=0&year=0&language=0&formats=0&quality=0" to "مسلسلات هندي",
-            "$mainUrl/movies?section=29&category=0&rating=0&year=0&language=0&formats=0&quality=0" to "أفلام عربي",
-            "$mainUrl/movies?section=32&category=0&rating=0&year=0&language=0&formats=0&quality=0" to "أفلام تركي",
-            "$mainUrl/movies?section=33&category=0&rating=0&year=0&language=0&formats=0&quality=0" to "أفلام اسيوية",
-            "$mainUrl/movies?section=30&category=0&rating=0&year=0&language=0&formats=0&quality=0" to "أفلام اجنبي",
-            "$mainUrl/movies?section=31&category=0&rating=0&year=0&language=0&formats=0&quality=0" to "أفلام هندي"
+            "$mainUrl/shows" to "العروض"
         )
 
         val items = ArrayList<HomePageList>()
@@ -90,11 +73,9 @@ class Akwam : MainAPI() {
                     if (baseUrl.contains("?")) "$baseUrl&page=$page" else "$baseUrl?page=$page"
                 } else baseUrl
 
-                val doc = try {
-                    app.get(fullUrl).document
-                } catch (_: Exception) {
-                    null
-                } ?: continue
+                val doc = kotlin.runCatching { 
+                    app.get(fullUrl).document 
+                }.getOrNull() ?: continue
 
                 val list = doc.select("div.col-lg-auto.col-md-4.col-6").mapNotNull { el ->
                     val a = el.selectFirst("h3.entry-title a") ?: return@mapNotNull null
@@ -114,7 +95,7 @@ class Akwam : MainAPI() {
         }
 
         if (items.isEmpty()) throw ErrorLoadingException()
-        return HomePageResponse(items)
+        return newHomePageResponse(items)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
@@ -126,7 +107,6 @@ class Akwam : MainAPI() {
             val title = it.selectFirst("h3.entry-title a")?.text() ?: return@mapNotNull null
             val href = it.selectFirst("a")?.attr("href") ?: return@mapNotNull null
             val poster = getPoster(it)
-            // التعديل: نمرر البوستر في الرابط نفسه
             val urlWithPoster = "$href#${poster ?: ""}"
 
             newMovieSearchResponse(name = title, url = urlWithPoster, type = TvType.Movie) {
@@ -149,8 +129,8 @@ class Akwam : MainAPI() {
         val title = mainDoc.selectFirst("h1.entry-title")?.text()?.trim() ?: "Unknown"
         val plot = mainDoc.selectFirst("h2:contains(قصة المسلسل) + div > p")?.text()?.trim()
             ?: mainDoc.selectFirst("meta[name=description]")?.attr("content")?.trim()
-        val rating = mainDoc.selectFirst("span.mx-2:contains(/)")
-            ?.text()?.substringBefore("/")?.trim()?.toRatingInt()
+        
+        // Remove deprecated rating
         val tags = mainDoc.select("div.font-size-16.text-white a[href*='/genre/'], div.font-size-16.text-white a[href*='/category/']")
             .map { it.text() }
         val year = mainDoc.select("div.font-size-16.text-white a[href*='/year/']").firstOrNull()?.text()?.toIntOrNull()
@@ -192,8 +172,7 @@ class Akwam : MainAPI() {
                 this.plot = plot
                 this.year = year
                 this.tags = tags
-                this.rating = rating
-                this.recommendations = recommendations // <-- إضافة التوصيات هنا
+                this.recommendations = recommendations
             }
         }
 
@@ -231,8 +210,7 @@ class Akwam : MainAPI() {
                 this.plot = plot
                 this.year = year
                 this.tags = tags
-                this.rating = rating
-                this.recommendations = recommendations // <-- إضافة التوصيات هنا
+                this.recommendations = recommendations
             }
         }
 
@@ -244,8 +222,7 @@ class Akwam : MainAPI() {
             this.plot = plot
             this.year = year
             this.tags = tags
-            this.rating = rating
-            this.recommendations = recommendations // <-- إضافة التوصيات هنا
+            this.recommendations = recommendations
         }
     }
 
@@ -253,12 +230,7 @@ class Akwam : MainAPI() {
         val map = mapOf(
             "الاول" to 1, "الأول" to 1, "الثاني" to 2, "الثالث" to 3, "الرابع" to 4,
             "الخامس" to 5, "السادس" to 6, "السابع" to 7, "الثامن" to 8, "التاسع" to 9,
-            "العاشر" to 10, "الحادي عشر" to 11, "الثاني عشر" to 12, "الثالث عشر" to 13,
-            "الرابع عشر" to 14, "الخامس عشر" to 15, "السادس عشر" to 16, "السابع عشر" to 17,
-            "الثامن عشر" to 18, "التاسع عشر" to 19, "العشرون" to 20, "الحادي والعشرون" to 21,
-            "الثاني والعشرون" to 22, "الثالث والعشرون" to 23, "الرابع والعشرون" to 24,
-            "الخامس والعشرون" to 25, "السادس والعشرون" to 26, "السابع والعشرون" to 27,
-            "الثامن والعشرون" to 28, "التاسع والعشرون" to 29, "الثلاثون" to 30
+            "العاشر" to 10
         )
 
         val lower = seasonName.lowercase()
@@ -269,7 +241,7 @@ class Akwam : MainAPI() {
         val nums = Regex("\\d+").findAll(seasonName).map { it.value.toIntOrNull() ?: 0 }.toList()
         if (nums.isNotEmpty()) return nums.last()
 
-        return 999
+        return 1
     }
 
     override suspend fun loadLinks(
@@ -278,28 +250,23 @@ class Akwam : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // data = episode page URL (absolute)
         val episodeUrl = data
 
-        try {
-            val step1Doc = try {
-                app.get(episodeUrl).document
-            } catch (e: Exception) {
-                return false
-            }
+        return kotlin.runCatching {
+            val step1Doc = app.get(episodeUrl).document
 
             val watchPathElement = step1Doc.selectFirst("a.link-show")
             val pageIdElement = step1Doc.selectFirst("input#page_id")
 
             if (watchPathElement == null || pageIdElement == null) {
-                return false
+                return@runCatching false
             }
 
             val watchPath = watchPathElement.attr("href").ifBlank { watchPathElement.attr("abs:href") }
             val pageId = pageIdElement.attr("value").ifBlank { pageIdElement.attr("data-value") }
 
             if (watchPath.isBlank() || pageId.isBlank()) {
-                return false
+                return@runCatching false
             }
 
             val main = mainUrl.trimEnd('/')
@@ -312,19 +279,15 @@ class Akwam : MainAPI() {
                 .replace("//watch", "/watch")
                 .replace(":/", "://")
 
-            val step2Doc = try {
+            val step2Doc = kotlin.runCatching {
                 app.get(watchUrl).document
-            } catch (e1: Exception) {
-                try {
-                    app.get(watchUrl, headers = mapOf("Referer" to episodeUrl)).document
-                } catch (e2: Exception) {
-                    return false
-                }
+            }.getOrElse {
+                app.get(watchUrl, headers = mapOf("Referer" to episodeUrl)).document
             }
 
             val sourceElements = step2Doc.select("source[src]")
             if (sourceElements.isEmpty()) {
-                return false
+                return@runCatching false
             }
 
             val seen = mutableSetOf<String>()
@@ -345,9 +308,7 @@ class Akwam : MainAPI() {
                     }
                 )
             }
-            return true
-        } catch (e: Exception) {
-            return false
-        }
+            true
+        }.getOrElse { false }
     }
 }
