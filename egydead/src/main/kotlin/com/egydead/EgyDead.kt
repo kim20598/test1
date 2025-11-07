@@ -8,7 +8,7 @@ import org.jsoup.nodes.Element
 
 class EgyDead : MainAPI() {
     override var lang = "ar"
-    override var mainUrl = "https://egydead.skin" // Note: Your analysis shows it redirects to egydead.skin
+    override var mainUrl = "https://egydead.skin"
     override var name = "EgyDead"
     override val usesWebView = false
     override val hasMainPage = true
@@ -31,13 +31,9 @@ class EgyDead : MainAPI() {
             else -> TvType.TvSeries
         }
         
-        return MovieSearchResponse(
-            title,
-            href,
-            this@EgyDead.name,
-            tvType,
-            posterUrl,
-        )
+        return newMovieSearchResponse(title, href, tvType) {
+            this.posterUrl = posterUrl
+        }
     }
 
     override val mainPage = mainPageOf(
@@ -97,24 +93,22 @@ class EgyDead : MainAPI() {
             val episodes = arrayListOf<Episode>()
             
             if(seasonList.isNotEmpty()) {
-                seasonList.apmapIndexed { index, season ->
+                seasonList.mapIndexed { index, season ->
                     app.get(season.attr("href")).document.select("div.EpsList > li > a").map {
-                        episodes.add(Episode(
-                            it.attr("href"),
-                            it.attr("title"),
-                            index + 1,
-                            it.text().getIntFromText()
-                        ))
+                        episodes.add(newEpisode(it.attr("href")) {
+                            name = it.attr("title")
+                            season = index + 1
+                            episode = it.text().getIntFromText() ?: 1
+                        })
                     }
                 }
             } else {
                 doc.select("div.EpsList > li > a").map {
-                    episodes.add(Episode(
-                        it.attr("href"),
-                        it.attr("title"),
-                        1,
-                        it.text().getIntFromText()
-                    ))
+                    episodes.add(newEpisode(it.attr("href")) {
+                        name = it.attr("title")
+                        season = 1
+                        episode = it.text().getIntFromText() ?: 1
+                    })
                 }
             }
             
@@ -139,11 +133,9 @@ class EgyDead : MainAPI() {
         var foundLinks = false
         
         try {
-            // METHOD 1: POST request to load video sources (CONFIRMED WORKING)
             val doc = app.post(data, data = mapOf("View" to "1")).document
             
-            // Extract download servers (61 servers found in your analysis!)
-            doc.select(".donwload-servers-list > li, .download-servers > li").apmap { element ->
+            doc.select(".donwload-servers-list > li, .download-servers > li").forEach { element ->
                 val url = element.select("a").attr("href")
                 if (url.isNotBlank()) {
                     foundLinks = true
@@ -151,8 +143,7 @@ class EgyDead : MainAPI() {
                 }
             }
             
-            // Extract embedded players (StreamHG, Forafile, Mixdrop, etc.)
-            doc.select("ul.serversList > li, [data-link]").apmap { li ->
+            doc.select("ul.serversList > li, [data-link]").forEach { li ->
                 val iframeUrl = li.attr("data-link").ifBlank { li.select("a").attr("href") }
                 if (iframeUrl.isNotBlank() && iframeUrl.contains("http")) {
                     foundLinks = true
@@ -161,7 +152,6 @@ class EgyDead : MainAPI() {
             }
             
         } catch (e: Exception) {
-            // Fallback if POST fails
             print("❌ POST failed, trying fallback: ${e.message}")
         }
         
