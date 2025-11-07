@@ -9,7 +9,7 @@ class EgyDead : MainAPI() {
     override var name = "EgyDead"
     override var lang = "ar"
     override val hasMainPage = true
-    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
+    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime)
 
     private fun String.toAbsolute(): String {
         return when {
@@ -20,25 +20,20 @@ class EgyDead : MainAPI() {
     }
 
     override val mainPage = mainPageOf(
-        "$mainUrl/category/movies/" to "أفلام",
-        "$mainUrl/category/series/" to "مسلسلات",
-        "$mainUrl/category/anime/" to "أنمي"
+        "$mainUrl/category/افلام-اجنبي-اونلاين" to "أفلام أجنبية",
+        "$mainUrl/series-category/مسلسلات-اجنبي-1" to "مسلسلات أجنبية",
+        "$mainUrl/category/افلام-انمي" to "أفلام أنمي",
+        "$mainUrl/series-category/مسلسلات-انمي" to "مسلسلات أنمي"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val url = if (page == 1) request.data else "${request.data}/page/$page"
-        val document = app.get(url).document
+        val doc = app.get(url).document
 
-        val items = document.select("div.item").mapNotNull {
-            val title = it.selectFirst("h1, h2, h3")?.text()
-                ?.takeUnless { t -> t.contains("القائمه", true) || t.contains("الرئيسيه", true) }
-                ?: return@mapNotNull null
-
-            val href = it.selectFirst("a")?.attr("href")?.toAbsolute()
-                ?: return@mapNotNull null
-
+        val items = doc.select("li.movieItem a").mapNotNull {
+            val href = it.attr("href").toAbsolute()
+            val title = it.selectFirst("h1.BottomTitle")?.text() ?: return@mapNotNull null
             val poster = it.selectFirst("img")?.attr("src")?.toAbsolute()
-
             newMovieSearchResponse(title, href, TvType.Movie) {
                 this.posterUrl = poster
             }
@@ -49,13 +44,13 @@ class EgyDead : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         val url = "$mainUrl/?s=${query.replace(" ", "+")}"
-        val document = app.get(url).document
-        return document.select("div.item").mapNotNull {
-            val title = it.selectFirst("h1, h2, h3")?.text() ?: return@mapNotNull null
-            val href = it.selectFirst("a")?.attr("href")?.toAbsolute() ?: return@mapNotNull null
-            val poster = it.selectFirst("img")?.attr("src")?.toAbsolute()
-            val type = if (href.contains("/series/")) TvType.TvSeries else TvType.Movie
+        val doc = app.get(url).document
 
+        return doc.select("li.movieItem a").mapNotNull {
+            val href = it.attr("href").toAbsolute()
+            val title = it.selectFirst("h1.BottomTitle")?.text() ?: return@mapNotNull null
+            val poster = it.selectFirst("img")?.attr("src")?.toAbsolute()
+            val type = if (href.contains("/movie/")) TvType.Movie else TvType.TvSeries
             newMovieSearchResponse(title, href, type) {
                 this.posterUrl = poster
             }
@@ -63,25 +58,14 @@ class EgyDead : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val document = app.get(url).document
-        val title = document.selectFirst("h1.entry-title, h1.title")?.text() ?: "غير معروف"
-        val poster = document.selectFirst("img.wp-post-image, .poster img")?.attr("src")?.toAbsolute()
-        val plot = document.selectFirst("div.story p, div.post-content p")?.text()
-
-        val iframe = document.selectFirst("iframe")?.attr("src")?.toAbsolute()
-        val recommendations = document.select("div.item").mapNotNull {
-            val recTitle = it.selectFirst("h1, h2, h3")?.text() ?: return@mapNotNull null
-            val recHref = it.selectFirst("a")?.attr("href")?.toAbsolute() ?: return@mapNotNull null
-            val recPoster = it.selectFirst("img")?.attr("src")?.toAbsolute()
-            newMovieSearchResponse(recTitle, recHref, TvType.Movie) {
-                this.posterUrl = recPoster
-            }
-        }
+        val doc = app.get(url).document
+        val title = doc.selectFirst(".singleTitle em")?.text() ?: "غير معروف"
+        val poster = doc.selectFirst(".single-thumbnail img")?.attr("src")?.toAbsolute()
+        val plot = doc.selectFirst(".extra-content p")?.text()
 
         return newMovieLoadResponse(title, url, TvType.Movie, url) {
             this.posterUrl = poster
             this.plot = plot
-            this.recommendations = recommendations
         }
     }
 
@@ -91,9 +75,15 @@ class EgyDead : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val document = app.get(data).document
-        val iframe = document.selectFirst("iframe")?.attr("src")?.toAbsolute() ?: return false
-        loadExtractor(iframe, data, subtitleCallback, callback)
-        return true
+        val doc = app.get(data).document
+        val links = doc.select(".serversList li").mapNotNull {
+            it.attr("data-link").takeIf { link -> link.isNotBlank() }?.toAbsolute()
+        }
+
+        links.forEach { link ->
+            loadExtractor(link, data, subtitleCallback, callback)
+        }
+
+        return links.isNotEmpty()
     }
 }
