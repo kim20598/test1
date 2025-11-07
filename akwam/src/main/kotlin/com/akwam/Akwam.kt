@@ -63,7 +63,7 @@ class Akwam : MainAPI() {
         val urls = listOf(
             "$mainUrl/movies" to "أحدث الأفلام",
             "$mainUrl/series" to "أحدث المسلسلات",
-            "$mainUrl/shows" to "العروض"
+            "$mainUrl/shows" to "العروض",
             "$mainUrl/series?section=29&category=0&rating=0&year=0&language=0&formats=0&quality=0" to "مسلسلات عربي",
             "$mainUrl/series?section=32&category=0&rating=0&year=0&language=0&formats=0&quality=0" to "مسلسلات تركي",
             "$mainUrl/series?section=33&category=0&rating=0&year=0&language=0&formats=0&quality=0" to "مسلسلات اسيوية",
