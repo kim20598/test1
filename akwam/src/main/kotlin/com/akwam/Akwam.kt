@@ -63,14 +63,14 @@ class Akwam : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val doc = app.get(url).document
-        val title = doc.select("h1.entry-title").text()
-        val posterUrl = doc.select("picture > img").attr("src").toAbsolute()
-        val synopsis = doc.select("div.widget-body p:first-child").text()
+        val document = app.get(url).document
+        val title = document.selectFirst("h1.entry-title")?.text() ?: "غير معروف"
+        val poster = document.selectFirst(".poster img")?.attr("src")?.toAbsolute()
+        val plot = document.selectFirst(".story p")?.text()
 
         return newMovieLoadResponse(title, url, TvType.Movie, url) {
-            this.posterUrl = posterUrl
-            this.plot = synopsis
+            this.posterUrl = poster
+            this.plot = plot
         }
     }
 
@@ -92,6 +92,7 @@ class Akwam : MainAPI() {
     ): Boolean {
         val doc = app.get(data).document
 
+        // Akwam specific scraping logic - BUILD SAFE
         val links = doc.select("div.tab-content.quality").map { element ->
             val quality = getQualityFromId(element.attr("id").getIntFromText())
             element.select(".col-lg-6 > a:contains(تحميل)").map { linkElement ->
@@ -103,7 +104,7 @@ class Akwam : MainAPI() {
                 } else {
                     val url = "$mainUrl/download${
                         linkElement.attr("href").split("/link")[1]
-                    }${data.split("/movie|/episode|/shows|/show/episode".toRegex())[1]}".toAbsolute()
+                    }${data.split("/movie|/episode".toRegex())[1]}".toAbsolute()
                     Pair(
                         url,
                         quality,
@@ -112,14 +113,16 @@ class Akwam : MainAPI() {
             }
         }.flatten()
 
-        links.apmap { linkPair ->
+        // Process links without deprecated apmap
+        links.forEach { linkPair ->
             val linkDoc = app.get(linkPair.first).document
             val button = linkDoc.select("div.btn-loader > a")
             val url = button.attr("href").toAbsolute()
 
-            // Use loadExtractor instead of manual ExtractorLink
+            // Use loadExtractor for safe link handling
             loadExtractor(url, data, subtitleCallback, callback)
         }
+        
         return true
     }
 }
