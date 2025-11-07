@@ -13,9 +13,9 @@ class EgyDead : MainAPI() {
 
     private fun String.toAbsolute(): String {
         return when {
-            this.startsWith("http") -> this
-            this.startsWith("//") -> "https:$this"
-            else -> "$mainUrl${if (this.startsWith("/")) "" else "/"}$this"
+            startsWith("http") -> this
+            startsWith("//") -> "https:$this"
+            else -> "$mainUrl${if (startsWith("/")) "" else "/"}$this"
         }
     }
 
@@ -63,9 +63,23 @@ class EgyDead : MainAPI() {
         val poster = doc.selectFirst(".single-thumbnail img")?.attr("src")?.toAbsolute()
         val plot = doc.selectFirst(".extra-content p")?.text()
 
-        return newMovieLoadResponse(title, url, TvType.Movie, url) {
-            this.posterUrl = poster
-            this.plot = plot
+        // Check if it’s a TV series with episodes
+        val episodes = doc.select(".episodes-list .EpsList li a").map {
+            val epUrl = it.attr("href").toAbsolute()
+            val name = it.text()
+            Episode(epUrl, name = name)
+        }
+
+        return if (episodes.isNotEmpty()) {
+            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+                this.posterUrl = poster
+                this.plot = plot
+            }
+        } else {
+            newMovieLoadResponse(title, url, TvType.Movie, url) {
+                this.posterUrl = poster
+                this.plot = plot
+            }
         }
     }
 
@@ -76,14 +90,21 @@ class EgyDead : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val doc = app.get(data).document
-        val links = doc.select(".serversList li").mapNotNull {
-            it.attr("data-link").takeIf { link -> link.isNotBlank() }?.toAbsolute()
-        }
 
-        links.forEach { link ->
+        // Watch servers
+        val streamLinks = doc.select(".serversList li")
+            .mapNotNull { it.attr("data-link") }
+            .filter { it.isNotBlank() }
+
+        // Download servers
+        val downloadLinks = doc.select(".donwload-servers-list a.ser-link")
+            .mapNotNull { it.attr("href") }
+            .filter { it.isNotBlank() }
+
+        (streamLinks + downloadLinks).forEach { link ->
             loadExtractor(link, data, subtitleCallback, callback)
         }
 
-        return links.isNotEmpty()
+        return (streamLinks + downloadLinks).isNotEmpty()
     }
 }
