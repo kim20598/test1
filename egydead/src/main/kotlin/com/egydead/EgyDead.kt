@@ -2,47 +2,88 @@ package com.egydead
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
-import org.jsoup.nodes.Element
+import org.jsoup.Jsoup
 
 class EgyDead : MainAPI() {
     override var mainUrl = "https://egydead.skin"
     override var name = "EgyDead"
-    override val hasMainPage = true
     override var lang = "ar"
-    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
+    override val hasMainPage = true
+    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime)
+
+    private fun String.toAbsolute(): String {
+        return when {
+            this.startsWith("http") -> this
+            this.startsWith("//") -> "https:$this"
+            else -> "$mainUrl${if (this.startsWith("/")) "" else "/"}$this"
+        }
+    }
 
     override val mainPage = mainPageOf(
-        "$mainUrl/" to "Latest"
+        "$mainUrl/category/افلام-اجنبي-اونلاين" to "أفلام أجنبية",
+        "$mainUrl/series-category/مسلسلات-اجنبي-1" to "مسلسلات أجنبية",
+        "$mainUrl/category/افلام-انمي" to "أفلام أنمي",
+        "$mainUrl/series-category/مسلسلات-انمي" to "مسلسلات أنمي"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val document = app.get(mainUrl).document
-        val items = document.select("div.item").mapNotNull { it.toSearchResponse() }
+        val url = if (page == 1) request.data else "${request.data}/page/$page"
+        val doc = app.get(url).document
+
+        val items = doc.select("li.movieItem a").mapNotNull {
+            val href = it.attr("href").toAbsolute()
+            val title = it.selectFirst("h1.BottomTitle")?.text() ?: return@mapNotNull null
+            val poster = it.selectFirst("img")?.attr("src")?.toAbsolute()
+            newMovieSearchResponse(title, href, TvType.Movie) {
+                this.posterUrl = poster
+            }
+        }
+
         return newHomePageResponse(request.name, items)
     }
 
-    private fun Element.toSearchResponse(): SearchResponse? {
-        val link = selectFirst("a") ?: return null
-        val href = link.attr("href")
-        val title = selectFirst("h1")?.text() ?: "Unknown"
-        val poster = selectFirst("img")?.attr("src")
-        
-        return newMovieSearchResponse(title, href, TvType.Movie) {
-            this.posterUrl = poster
-        }
-    }
-
     override suspend fun search(query: String): List<SearchResponse> {
-        return emptyList() // TODO
+        val url = "$mainUrl/?s=${query.replace(" ", "+")}"
+        val doc = app.get(url).document
+
+        return doc.select("li.movieItem a").mapNotNull {
+            val href = it.attr("href").toAbsolute()
+            val title = it.selectFirst("h1.BottomTitle")?.text() ?: return@mapNotNull null
+            val poster = it.selectFirst("img")?.attr("src")?.toAbsolute()
+            val type = if (href.contains("/movie/")) TvType.Movie else TvType.TvSeries
+            newMovieSearchResponse(title, href, type) {
+                this.posterUrl = poster
+            }
+        }
     }
 
     override suspend fun load(url: String): LoadResponse {
-        return newMovieLoadResponse("Test", url, TvType.Movie, url) {
-            this.posterUrl = null
+        val doc = app.get(url).document
+        val title = doc.selectFirst(".singleTitle em")?.text() ?: "غير معروف"
+        val poster = doc.selectFirst(".single-thumbnail img")?.attr("src")?.toAbsolute()
+        val plot = doc.selectFirst(".extra-content p")?.text()
+
+        return newMovieLoadResponse(title, url, TvType.Movie, url) {
+            this.posterUrl = poster
+            this.plot = plot
         }
     }
 
-    override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
-        return true
+    override suspend fun loadLinks(
+        data: String,
+        isCasting: Boolean,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        val doc = app.get(data).document
+        val links = doc.select(".serversList li").mapNotNull {
+            it.attr("data-link").takeIf { link -> link.isNotBlank() }?.toAbsolute()
+        }
+
+        links.forEach { link ->
+            loadExtractor(link, data, subtitleCallback, callback)
+        }
+
+        return links.isNotEmpty()
     }
 }
