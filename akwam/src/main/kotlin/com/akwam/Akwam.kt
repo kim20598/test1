@@ -2,7 +2,6 @@ package com.akwam
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
-import com.lagradost.cloudstream3.extractors.*
 import org.jsoup.Jsoup
 
 class Akwam : MainAPI() {
@@ -64,27 +63,10 @@ class Akwam : MainAPI() {
         val title = document.selectFirst("h1.entry-title")?.text() ?: "غير معروف"
         val poster = document.selectFirst(".poster img")?.attr("src")?.toAbsolute()
         val plot = document.selectFirst(".story p")?.text()
-        
-        // Extract episode links for series
-        val episodes = if (url.contains("/series/") || url.contains("/episode/")) {
-            document.select("div.episode-list a").mapNotNull { episode ->
-                val episodeTitle = episode.text().trim()
-                val episodeUrl = episode.attr("href").toAbsolute()
-                newEpisode(episodeUrl) {
-                    this.name = episodeTitle
-                }
-            }
-        } else {
-            emptyList()
-        }
 
         return newMovieLoadResponse(title, url, TvType.Movie, url) {
             this.posterUrl = poster
             this.plot = plot
-            // For TvSeries, we need to use the correct builder
-            if (episodes.isNotEmpty()) {
-                this.episodes = episodes
-            }
         }
     }
 
@@ -96,20 +78,12 @@ class Akwam : MainAPI() {
     ): Boolean {
         val document = app.get(data).document
         
-        // Method 1: Direct video links
+        // Method 1: Direct video links - simplified without ExtractorLink
         document.select("source[src]").forEach { source ->
             val videoUrl = source.attr("src").toAbsolute()
             if (videoUrl.isNotBlank() && (videoUrl.contains(".mp4") || videoUrl.contains(".m3u8"))) {
-                callback.invoke(
-                    ExtractorLink(
-                        name,
-                        name,
-                        videoUrl,
-                        "$mainUrl/",
-                        Qualities.Unknown.value,
-                        videoUrl.contains(".m3u8")
-                    )
-                )
+                // Let CloudStream handle the link creation
+                loadExtractor(videoUrl, data, subtitleCallback, callback)
             }
         }
         
@@ -117,7 +91,6 @@ class Akwam : MainAPI() {
         document.select("iframe[src]").forEach { iframe ->
             val iframeUrl = iframe.attr("src").toAbsolute()
             if (iframeUrl.isNotBlank()) {
-                // Use CloudStream's built-in extractors
                 loadExtractor(iframeUrl, data, subtitleCallback, callback)
             }
         }
@@ -126,16 +99,7 @@ class Akwam : MainAPI() {
         document.select("a[href*='.mp4'], a[href*='.m3u8'], a[href*='video']").forEach { link ->
             val videoUrl = link.attr("href").toAbsolute()
             if (videoUrl.isNotBlank() && (videoUrl.contains(".mp4") || videoUrl.contains(".m3u8"))) {
-                callback.invoke(
-                    ExtractorLink(
-                        name,
-                        "Direct Link",
-                        videoUrl,
-                        "$mainUrl/",
-                        Qualities.Unknown.value,
-                        videoUrl.contains(".m3u8")
-                    )
-                )
+                loadExtractor(videoUrl, data, subtitleCallback, callback)
             }
         }
         
