@@ -78,16 +78,27 @@ class Akwam : MainAPI() {
     ): Boolean {
         val document = app.get(data).document
         
-        // Method 1: Direct video links - simplified without ExtractorLink
-        document.select("source[src]").forEach { source ->
-            val videoUrl = source.attr("src").toAbsolute()
-            if (videoUrl.isNotBlank() && (videoUrl.contains(".mp4") || videoUrl.contains(".m3u8"))) {
-                // Let CloudStream handle the link creation
-                loadExtractor(videoUrl, data, subtitleCallback, callback)
+        // Method 1: Look for download/watch buttons (Akwam specific)
+        document.select("a.btn, a.download-btn, a.watch-btn, button[onclick*='window.open']").forEach { link ->
+            val onclick = link.attr("onclick")
+            val href = link.attr("href")
+            
+            // Extract URL from onclick events like: window.open('URL')
+            val onclickUrl = if (onclick.contains("window.open")) {
+                Regex("window\\.open\\('([^']+)'\\)").find(onclick)?.groupValues?.get(1)
+            } else null
+            
+            val videoUrl = onclickUrl ?: href
+            if (videoUrl.isNotBlank()) {
+                val absoluteUrl = videoUrl.toAbsolute()
+                if (absoluteUrl.contains("/watch/") || absoluteUrl.contains("/embed/") || 
+                    absoluteUrl.contains("video") || absoluteUrl.contains("player")) {
+                    loadExtractor(absoluteUrl, data, subtitleCallback, callback)
+                }
             }
         }
         
-        // Method 2: Iframe extraction
+        // Method 2: Direct iframes
         document.select("iframe[src]").forEach { iframe ->
             val iframeUrl = iframe.attr("src").toAbsolute()
             if (iframeUrl.isNotBlank()) {
@@ -95,10 +106,21 @@ class Akwam : MainAPI() {
             }
         }
         
-        // Method 3: Direct download buttons
-        document.select("a[href*='.mp4'], a[href*='.m3u8'], a[href*='video']").forEach { link ->
-            val videoUrl = link.attr("href").toAbsolute()
+        // Method 3: Video sources
+        document.select("source[src]").forEach { source ->
+            val videoUrl = source.attr("src").toAbsolute()
             if (videoUrl.isNotBlank() && (videoUrl.contains(".mp4") || videoUrl.contains(".m3u8"))) {
+                loadExtractor(videoUrl, data, subtitleCallback, callback)
+            }
+        }
+        
+        // Method 4: Look for video URLs in script tags
+        document.select("script").forEach { script ->
+            val scriptContent = script.html()
+            // Look for common video URL patterns in scripts
+            val videoUrls = Regex("""(https?:[^"'\s]*\.(?:mp4|m3u8)[^"'\s]*)""").findAll(scriptContent)
+            videoUrls.forEach { match ->
+                val videoUrl = match.groupValues[1].toAbsolute()
                 loadExtractor(videoUrl, data, subtitleCallback, callback)
             }
         }
