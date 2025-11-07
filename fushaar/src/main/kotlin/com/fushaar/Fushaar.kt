@@ -1,7 +1,6 @@
 package com.fushaar
 
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
 import org.jsoup.nodes.Element
@@ -21,16 +20,20 @@ class Fushaar : MainAPI() {
     }
     
     private fun String.cleanTitle(): String {
-        return this.replace("جميع مواسم مسلسل|مترجم كامل|مشاهدة فيلم|مترجم|انمي|الموسم.*|مترجمة كاملة|مسلسل|كاملة".toRegex(), "").trim()
+        return this.replace("مشاهدة|فيلم|مسلسل|انمي|مترجم|مدبلج|كامل|اونلاين".toRegex(), "").trim()
     }
 
-    // Search response
+    // Search response from Fushaar site structure
     private fun Element.toSearchResponse(): SearchResponse {
-        val title = select(".BottomTitle").text().cleanTitle()
+        val title = select("h2 a").text().cleanTitle()
         val posterUrl = select("img").attr("src")
-        val href = select("a").attr("href")
+        val href = select("h2 a").attr("href")
+        
+        // Determine type based on URL or category
         val tvType = when {
-            select("span.cat_name").text().contains("افلام") -> TvType.Movie
+            href.contains("/movie/") || select(".category a").text().contains("فيلم") -> TvType.Movie
+            href.contains("/series/") || select(".category a").text().contains("مسلسل") -> TvType.TvSeries
+            href.contains("/anime/") || select(".category a").text().contains("انمي") -> TvType.Anime
             else -> TvType.TvSeries
         }
         
@@ -39,49 +42,84 @@ class Fushaar : MainAPI() {
         }
     }
 
-    // Main page
+    // Main page for Fushaar
     override val mainPage = mainPageOf(
-        "$mainUrl/category/افلام-اجنبي/?page=" to "English Movies",
-        "$mainUrl/category/افلام-اسيوية/?page=" to "Asian Movies", 
-        "$mainUrl/season/?page=" to "Series",
-        "$mainUrl/category/انمي-مسلسلات/?page=" to "Anime Series"
+        "$mainUrl/movies/" to "الأفلام",
+        "$mainUrl/series/" to "المسلسلات", 
+        "$mainUrl/anime/" to "الأنمي"
     )
 
-    // getMainPage
+    // getMainPage for Fushaar
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val document = app.get(request.data + page).document
-        val home = document.select("li.movieItem").mapNotNull {
-            it.toSearchResponse()
+        val url = if (page > 1) "${request.data}page/$page/" else request.data
+        val document = app.get(url).document
+        
+        val home = document.select(".movie-list .movie, .series-list .series, .anime-list .anime, .post, article").mapNotNull {
+            try {
+                it.toSearchResponse()
+            } catch (e: Exception) {
+                null
+            }
         }
         return newHomePageResponse(request.name, home)
     }
 
-    // search function
+    // search function for Fushaar
     override suspend fun search(query: String): List<SearchResponse> {
         if (query.length < 3) return emptyList()
         val encodedQuery = URLEncoder.encode(query, "UTF-8")
         val doc = app.get("$mainUrl/?s=$encodedQuery").document
-        return doc.select("li.movieItem").mapNotNull {
-            if(it.select("a").attr("href").contains("/episode/")) return@mapNotNull null
-            it.toSearchResponse()
+        
+        return doc.select(".search-result, .post, article, .movie, .series").mapNotNull {
+            try {
+                // Skip episode pages in search results
+                val href = it.select("a").attr("href")
+                if (href.contains("/episode/") || href.contains("/watch/")) return@mapNotNull null
+                
+                it.toSearchResponse()
+            } catch (e: Exception) {
+                null
+            }
         }
     }
 
-    // load function
+    // load function for Fushaar
     override suspend fun load(url: String): LoadResponse {
         val doc = app.get(url).document
-        val title = doc.select("div.singleTitle em").text().cleanTitle()
-        val isMovie = !url.contains("/serie/|/season/".toRegex())
-
-        val posterUrl = doc.select("div.single-thumbnail > img").attr("src")
-        val synopsis = doc.select("div.extra-content:contains(القصه) p").text()
-        val year = doc.select("ul > li:contains(السنه) > a").text().getIntFromText()
-        val tags = doc.select("ul > li:contains(النوع) > a").map { it.text() }
-        val recommendations = doc.select("div.related-posts > ul > li").mapNotNull { element ->
-            element.toSearchResponse()
-        }
-        val youtubeTrailer = doc.select("div.popupContent > iframe").attr("src")
         
+        // Extract title
+        val title = doc.select("h1.entry-title, h1.title, .post-title").text().cleanTitle()
+        
+        // Determine if it's a movie or series
+        val isMovie = url.contains("/movie/") || doc.select(".movie-details, .film-details").isNotEmpty()
+        
+        // Extract poster
+        val posterUrl = doc.select(".poster img, .thumbnail img, .featured-image img").attr("src")
+        
+        // Extract synopsis/plot
+        val synopsis = doc.select(".entry-content, .description, .plot, .story").text()
+        
+        // Extract year
+        val year = doc.select(".year, .release-date, .date").text().getIntFromText()
+        
+        // Extract tags/genres
+        val tags = doc.select(".genres a, .tags a, .category a").map { it.text() }
+        
+        // Extract recommendations
+        val recommendations = doc.select(".related-posts a, .recommendations a").mapNotNull { element ->
+            try {
+                newMovieSearchResponse(
+                    element.text().cleanTitle(),
+                    element.attr("href"),
+                    TvType.TvSeries
+                ) {
+                    this.posterUrl = element.select("img").attr("src")
+                }
+            } catch (e: Exception) {
+                null
+            }
+        }
+
         return if (isMovie) {
             newMovieLoadResponse(title, url, TvType.Movie, url) {
                 this.posterUrl = posterUrl
@@ -89,30 +127,39 @@ class Fushaar : MainAPI() {
                 this.plot = synopsis
                 this.tags = tags
                 this.year = year
-                addTrailer(youtubeTrailer)
             }
         } else {
-            val seasonList = doc.select("div.seasons-list ul > li > a").reversed()
+            // For series, extract episodes
             val episodes = arrayListOf<Episode>()
             
-            if(seasonList.isNotEmpty()) {
-                seasonList.forEachIndexed { index, season ->
-                    val seasonDoc = app.get(season.attr("href")).document
-                    seasonDoc.select("div.EpsList > li > a").forEach {
-                        episodes.add(newEpisode(it.attr("href")) {
-                            name = it.attr("title")
-                            this.season = index + 1
-                            episode = it.text().getIntFromText() ?: 1
+            // Try to find episode lists
+            doc.select(".episode-list a, .episodes a, .season-episodes a").forEach { episodeElement ->
+                val episodeUrl = episodeElement.attr("href")
+                val episodeText = episodeElement.text()
+                
+                episodes.add(newEpisode(episodeUrl) {
+                    name = episodeElement.attr("title").ifBlank { episodeText }
+                    episode = episodeText.getIntFromText() ?: 1
+                    season = 1
+                })
+            }
+            
+            // If no episodes found, try seasons
+            if (episodes.isEmpty()) {
+                doc.select(".season-list a, .seasons a").forEachIndexed { seasonIndex, seasonElement ->
+                    val seasonUrl = seasonElement.attr("href")
+                    val seasonDoc = app.get(seasonUrl).document
+                    
+                    seasonDoc.select(".episode-list a, .episodes a").forEach { episodeElement ->
+                        val episodeUrl = episodeElement.attr("href")
+                        val episodeText = episodeElement.text()
+                        
+                        episodes.add(newEpisode(episodeUrl) {
+                            name = episodeElement.attr("title").ifBlank { episodeText }
+                            episode = episodeText.getIntFromText() ?: 1
+                            season = seasonIndex + 1
                         })
                     }
-                }
-            } else {
-                doc.select("div.EpsList > li > a").forEach {
-                    episodes.add(newEpisode(it.attr("href")) {
-                        name = it.attr("title")
-                        this.season = 1
-                        episode = it.text().getIntFromText() ?: 1
-                    })
                 }
             }
             
@@ -122,28 +169,46 @@ class Fushaar : MainAPI() {
                 this.plot = synopsis
                 this.recommendations = recommendations
                 this.year = year
-                addTrailer(youtubeTrailer)
             }
         }
     }
 
-    // loadLinks function
+    // loadLinks function for Fushaar
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
         var foundLinks = false
         
         try {
-            val doc = app.post(data, data = mapOf("View" to "1")).document
+            val doc = app.get(data).document
             
-            doc.select(".donwload-servers-list > li, .download-servers > li").forEach { element ->
-                val url = element.select("a").attr("href")
-                if (url.isNotBlank()) {
-                    foundLinks = true
-                    loadExtractor(url, data, subtitleCallback, callback)
+            // Try different video server selectors used by Arabic sites
+            val serverSelectors = listOf(
+                ".servers-list a",
+                ".download-servers a", 
+                ".server-list a",
+                ".video-server a",
+                ".player-options a",
+                "[data-server]",
+                "[data-link]"
+            )
+            
+            serverSelectors.forEach { selector ->
+                doc.select(selector).forEach { serverElement ->
+                    val videoUrl = serverElement.attr("href").ifBlank { 
+                        serverElement.attr("data-link").ifBlank { 
+                            serverElement.attr("data-server") 
+                        } 
+                    }
+                    
+                    if (videoUrl.isNotBlank() && videoUrl.contains("http")) {
+                        foundLinks = true
+                        loadExtractor(videoUrl, data, subtitleCallback, callback)
+                    }
                 }
             }
             
-            doc.select("ul.serversList > li, [data-link]").forEach { li ->
-                val iframeUrl = li.attr("data-link").ifBlank { li.select("a").attr("href") }
+            // Also check for iframes directly
+            doc.select("iframe").forEach { iframe ->
+                val iframeUrl = iframe.attr("src")
                 if (iframeUrl.isNotBlank() && iframeUrl.contains("http")) {
                     foundLinks = true
                     loadExtractor(iframeUrl, data, subtitleCallback, callback)
@@ -151,7 +216,8 @@ class Fushaar : MainAPI() {
             }
             
         } catch (e: Exception) {
-            // Fallback if POST fails
+            // Log error but don't crash
+            e.printStackTrace()
         }
         
         return foundLinks
