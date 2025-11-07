@@ -2,6 +2,7 @@ package com.akwam
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
+import com.lagradost.cloudstream3.extractors.*
 import org.jsoup.nodes.Element
 
 class Akwam : MainAPI() {
@@ -17,6 +18,10 @@ class Akwam : MainAPI() {
             this.startsWith("//") -> "https:$this"
             else -> "$mainUrl${if (this.startsWith("/")) "" else "/"}$this"
         }
+    }
+
+    private fun String.getIntFromText(): Int? {
+        return Regex("""\d+""").find(this)?.groupValues?.firstOrNull()?.toIntOrNull()
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
@@ -78,7 +83,7 @@ class Akwam : MainAPI() {
     ): Boolean {
         val doc = app.get(data).document
 
-        // Extract all quality links using the REAL structure we found
+        // Extract all quality links using the REAL structure
         val links = doc.select("div.tab-content.quality").map { element ->
             val qualityId = element.attr("id").substringAfter("tab-").toIntOrNull()
             val quality = getQualityFromId(qualityId)
@@ -103,19 +108,45 @@ class Akwam : MainAPI() {
                 loadExtractor(url, data, subtitleCallback, callback)
             } else if (url.contains("/link/")) {
                 // For download links, follow to get final URL
-                loadExtractor(url, data, subtitleCallback, callback)
+                extractDownloadLink(url, quality, data, subtitleCallback, callback)
             }
         }
         
         return true
     }
 
+    private suspend fun extractDownloadLink(
+        downloadUrl: String,
+        quality: Qualities,
+        referer: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        try {
+            val downloadDoc = app.get(downloadUrl, referer = referer).document
+            
+            // Look for the final download button/link
+            val finalUrl = downloadDoc.select("a[href*='.mp4'], a[href*='.m3u8'], a.download-link, button[onclick*='download']")
+                .firstOrNull()?.attr("href")?.toAbsolute()
+            
+            if (!finalUrl.isNullOrBlank()) {
+                loadExtractor(finalUrl, downloadUrl, subtitleCallback, callback)
+            } else {
+                // If no direct link found, try to extract from the page
+                loadExtractor(downloadUrl, referer, subtitleCallback, callback)
+            }
+        } catch (e: Exception) {
+            // If extraction fails, try the original URL directly
+            loadExtractor(downloadUrl, referer, subtitleCallback, callback)
+        }
+    }
+
     private fun getQualityFromId(id: Int?): Qualities {
         return when (id) {
             5 -> Qualities.P1080  // tab-5 = 1080p
             4 -> Qualities.P720   // tab-4 = 720p  
-            3 -> Qualities.P480   // tab-3 = 480p
-            2 -> Qualities.P360   // tab-2 = 360p
+            3 -> Qualities.P480   // tab-3 = 480p (if exists)
+            2 -> Qualities.P360   // tab-2 = 360p (if exists)
             else -> Qualities.Unknown
         }
     }
