@@ -2,7 +2,6 @@ package com.egydead
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
-import org.jsoup.Jsoup
 
 class EgyDead : MainAPI() {
     override var mainUrl = "https://egydead.skin"
@@ -101,7 +100,7 @@ class EgyDead : MainAPI() {
         val links = linkSelectors.flatMap { sel ->
             doc.select(sel).mapNotNull {
                 (it.attr("data-link").ifBlank { it.attr("href") })
-                    ?.takeIf { l -> l.isNotBlank() }?.toAbsolute()
+                    .takeIf { l -> l.isNotBlank() }?.toAbsolute()
             }
         }.distinct()
 
@@ -111,11 +110,11 @@ class EgyDead : MainAPI() {
                 link.endsWith(".mp4") || link.endsWith(".m3u8") -> {
                     callback.invoke(
                         ExtractorLink(
-                            this.name,
-                            "EgyDead",
-                            link,
-                            mainUrl,
-                            Qualities.P1080.value,
+                            name = "EgyDead",
+                            source = this.name,
+                            url = link,
+                            referer = mainUrl,
+                            quality = Qualities.P1080.value,
                             isM3u8 = link.endsWith(".m3u8")
                         )
                     )
@@ -123,6 +122,7 @@ class EgyDead : MainAPI() {
                 }
 
                 else -> {
+                    // Pass extractor links to loader
                     val result = loadExtractor(link, data, subtitleCallback, callback)
                     if (result) found = true
                 }
