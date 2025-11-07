@@ -5,6 +5,7 @@ import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
 import org.jsoup.nodes.Element
+import java.net.URLEncoder
 
 class EgyDead : MainAPI() {
     override var lang = "ar"
@@ -56,7 +57,8 @@ class EgyDead : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         if (query.length < 3) return emptyList()
-        val doc = app.get("$mainUrl/?s=${encodeUrl(query)}").document
+        val encodedQuery = URLEncoder.encode(query, "UTF-8")
+        val doc = app.get("$mainUrl/?s=$encodedQuery").document
         return doc.select("li.movieItem").mapNotNull {
             if(it.select("a").attr("href").contains("/episode/")) return@mapNotNull null
             it.toSearchResponse()
@@ -84,7 +86,7 @@ class EgyDead : MainAPI() {
                 this.recommendations = recommendations
                 this.plot = synopsis
                 this.tags = tags
-                this.rating = rating
+                this.score = rating
                 this.year = year
                 addTrailer(youtubeTrailer)
             }
@@ -93,8 +95,9 @@ class EgyDead : MainAPI() {
             val episodes = arrayListOf<Episode>()
             
             if(seasonList.isNotEmpty()) {
-                seasonList.mapIndexed { index, season ->
-                    app.get(season.attr("href")).document.select("div.EpsList > li > a").map {
+                seasonList.forEachIndexed { index, season ->
+                    val seasonDoc = app.get(season.attr("href")).document
+                    seasonDoc.select("div.EpsList > li > a").forEach {
                         episodes.add(newEpisode(it.attr("href")) {
                             name = it.attr("title")
                             season = index + 1
@@ -103,7 +106,7 @@ class EgyDead : MainAPI() {
                     }
                 }
             } else {
-                doc.select("div.EpsList > li > a").map {
+                doc.select("div.EpsList > li > a").forEach {
                     episodes.add(newEpisode(it.attr("href")) {
                         name = it.attr("title")
                         season = 1
@@ -117,7 +120,7 @@ class EgyDead : MainAPI() {
                 this.tags = tags
                 this.plot = synopsis
                 this.recommendations = recommendations
-                this.rating = rating
+                this.score = rating
                 this.year = year
                 addTrailer(youtubeTrailer)
             }
@@ -152,7 +155,7 @@ class EgyDead : MainAPI() {
             }
             
         } catch (e: Exception) {
-            print("❌ POST failed, trying fallback: ${e.message}")
+            // Fallback if POST fails
         }
         
         return foundLinks
