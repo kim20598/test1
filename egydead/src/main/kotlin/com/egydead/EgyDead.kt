@@ -28,28 +28,24 @@ class EgyDead : MainAPI() {
         }?.toAbsolute()
     }
 
-    private fun Element.toSearchResponse(requestName: String? = null): SearchResponse? {
+    private fun Element.toSearchResponse(): SearchResponse? {
         val link = this.selectFirst("a") ?: return null
         val href = link.attr("href").toAbsolute()
-        val title = link.selectFirst("h1.BottomTitle")?.text()?.trim() 
+        val title = link.selectFirst("h1.BottomTitle, h2, .title")?.text()?.trim() 
             ?: link.attr("title").trim()
+            ?: link.ownText().trim()
         val poster = getPoster(this)
         
         if (title.isBlank() || href.isBlank()) return null
 
-        // BETTER TYPE DETECTION WITH SECTION AWARENESS
+        // CLEAR TYPE DETECTION BASED ON URL PATTERNS
         val type = when {
-            // Force type based on main page section
-            requestName == "أحدث الحلقات" || requestName == "أحدث المواسم" -> TvType.TvSeries
-            requestName == "أحدث الأفلام" -> TvType.Movie
-            // URL-based detection
-            href.contains("/episode/") || href.contains("/season/") -> TvType.TvSeries
-            href.contains("/movie/") -> TvType.Movie
-            // DOM-based detection
-            link.parents().any { it.hasClass("episode") || it.selectFirst(".episode-count") != null } -> TvType.TvSeries
-            link.parents().any { it.hasClass("movie") || it.selectFirst(".movie-meta") != null } -> TvType.Movie
-            // Default fallback
-            else -> TvType.Movie
+            href.contains("/series-category/") || 
+            href.contains("/serie/") || 
+            href.contains("/season/") || 
+            href.contains("/episode/") -> TvType.TvSeries
+            href.contains("/category/") -> TvType.Movie
+            else -> TvType.Movie // Default fallback
         }
 
         return newMovieSearchResponse(title, href, type) {
@@ -57,20 +53,22 @@ class EgyDead : MainAPI() {
         }
     }
 
+    // PROPER MAIN PAGE SECTIONS BASED ON ACTUAL WEBSITE STRUCTURE
     override val mainPage = mainPageOf(
-        "$mainUrl/" to "المضاف حديثا",
-        "$mainUrl/page/movies/" to "أحدث الأفلام", 
-        "$mainUrl/episode/" to "أحدث الحلقات",
-        "$mainUrl/season/" to "أحدث المواسم"
+        "$mainUrl/" to "أحدث المحتوى",
+        "$mainUrl/category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d8%a7%d8%ac%d9%86%d8%a8%d9%8a-%d8%a7%d9%88%d9%86%d9%84%d8%a7%d9%8a%d9%86/" to "أفلام أجنبية",
+        "$mainUrl/series-category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%a7%d8%ac%d9%86%d8%a8%d9%8a-1/" to "مسلسلات أجنبية",
+        "$mainUrl/series-category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%a7%d9%86%d9%85%d9%8a/" to "مسلسلات أنمي",
+        "$mainUrl/category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d8%a7%d9%86%d9%85%d9%8a/" to "أفلام أنمي"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val url = if (page > 1) "${request.data}?page=$page" else request.data
+        val url = if (page > 1) "${request.data}page/$page/" else request.data
         val document = app.get(url).document
 
-        val items = document.select("li.movieItem").mapNotNull { element ->
-            // PASS SECTION NAME TO HELP WITH TYPE DETECTION
-            element.toSearchResponse(request.name)
+        // TRY DIFFERENT SELECTORS FOR ITEMS
+        val items = document.select("li.movieItem, article.post, .item, .post-item").mapNotNull { 
+            it.toSearchResponse() 
         }
 
         return newHomePageResponse(request.name, items)
@@ -81,7 +79,7 @@ class EgyDead : MainAPI() {
         val url = "$mainUrl/?s=$encodedQuery"
         val document = app.get(url).document
 
-        return document.select("li.movieItem").mapNotNull { 
+        return document.select("li.movieItem, article.post, .item, .post-item").mapNotNull { 
             it.toSearchResponse() 
         }
     }
@@ -89,52 +87,38 @@ class EgyDead : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url).document
         
-        val title = document.selectFirst("h1.entry-title")?.text()?.trim() 
-            ?: document.selectFirst("h1.BottomTitle")?.text()?.trim() 
+        val title = document.selectFirst("h1.entry-title, h1.title, h1")?.text()?.trim() 
             ?: "Unknown"
         
-        val poster = document.selectFirst("img[src*='wp-content']")?.attr("src")?.toAbsolute()
-        val plot = document.selectFirst("div.entry-content p")?.text()?.trim()
+        val poster = document.selectFirst("img[src*='wp-content'], .poster img, img.wp-post-image")?.attr("src")?.toAbsolute()
+        val plot = document.selectFirst("div.entry-content, .plot, .description, .summary")?.text()?.trim()
 
-        // IMPROVED TYPE DETECTION
+        // CLEAR TYPE DETECTION BASED ON URL AND CONTENT
         val isMovie = when {
-            // Clear movie indicators
-            url.contains("/movie/") -> true
-            document.selectFirst("a[href*='/movie/']") != null -> true
-            title.contains("فيلم") -> true
-            document.selectFirst(".movie-meta, .film-meta") != null -> true
-            
-            // Clear series indicators
-            url.contains("/episode/") || url.contains("/season/") -> false
-            document.selectFirst(".episode-list, .episodes-list, .season-list") != null -> false
+            url.contains("/category/") -> true
+            url.contains("/series-category/") -> false
+            url.contains("/serie/") -> false
+            url.contains("/season/") -> false
+            url.contains("/episode/") -> false
+            document.select(".episode-list, .episodes, .season-list").isNotEmpty() -> false
             document.select("a[href*='/episode/'], a[href*='/season/']").isNotEmpty() -> false
-            
-            // Default to movie if uncertain
-            else -> true
+            else -> true // Default to movie
         }
 
-        // BETTER EPISODE PARSING
+        // EPISODE EXTRACTION FOR SERIES
         val episodes = if (!isMovie) {
-            document.select("div.episode-list a, .episodes-list a, a.episode-link, a[href*='/episode/']").mapNotNull { episodeLink ->
+            document.select(".episode-list a, .episodes a, a[href*='/episode/']").mapNotNull { episodeLink ->
                 val episodeUrl = episodeLink.attr("href").toAbsolute()
                 val episodeTitle = episodeLink.ownText().trim().ifBlank { 
                     episodeLink.text().trim() 
                 }
-                val cleanTitle = episodeTitle.replace(Regex("""<[^>]*>"""), "").trim() // Remove HTML tags
-                val episodeNumber = extractEpisodeNumber(cleanTitle) ?: 1
+                val episodeNumber = extractEpisodeNumber(episodeTitle) ?: 1
 
                 newEpisode(episodeUrl) {
-                    this.name = cleanTitle.ifBlank { "الحلقة $episodeNumber" }
+                    this.name = if (episodeTitle.isNotBlank()) episodeTitle else "الحلقة $episodeNumber"
                     this.episode = episodeNumber
                     this.posterUrl = poster
                 }
-            }.ifEmpty {
-                // Fallback: if no episodes found but it's a series, create default episodes
-                listOf(newEpisode(url) {
-                    this.name = "الحلقة 1"
-                    this.episode = 1
-                    this.posterUrl = poster
-                })
             }
         } else {
             emptyList()
@@ -178,28 +162,27 @@ class EgyDead : MainAPI() {
     ): Boolean {
         val document = app.get(data).document
 
-        // METHOD 1: Extract from download servers list
-        document.select("ul.donwload-servers-list li").forEach { serverItem ->
-            val serverName = serverItem.selectFirst(".ser-name")?.text()?.trim() ?: "Unknown"
-            val quality = serverItem.selectFirst(".server-info em")?.text()?.trim() ?: "Unknown"
-            val downloadLink = serverItem.selectFirst("a.ser-link")?.attr("href")?.toAbsolute()
+        // METHOD 1: Download servers list
+        document.select("ul.donwload-servers-list li, .download-servers li, .servers-list li").forEach { serverItem ->
+            val serverName = serverItem.selectFirst(".ser-name, .server-name")?.text()?.trim() ?: "Unknown"
+            val quality = serverItem.selectFirst(".server-info em, .quality")?.text()?.trim() ?: "Unknown"
+            val downloadLink = serverItem.selectFirst("a.ser-link, .download-link, a[href]")?.attr("href")?.toAbsolute()
             
             if (!downloadLink.isNullOrBlank()) {
-                // Send to CloudStream's extractor system
                 loadExtractor(downloadLink, data, subtitleCallback, callback)
             }
         }
 
-        // METHOD 2: Look for embedded iframes (fallback)
-        document.select("iframe[src]").forEach { iframe ->
+        // METHOD 2: Embedded players
+        document.select("iframe[src], .video-player iframe, .player iframe").forEach { iframe ->
             val iframeUrl = iframe.attr("src").toAbsolute()
             if (iframeUrl.isNotBlank() && !iframeUrl.contains("youtube", ignoreCase = true)) {
                 loadExtractor(iframeUrl, data, subtitleCallback, callback)
             }
         }
 
-        // METHOD 3: Look for direct video sources
-        document.select("source[src]").forEach { source ->
+        // METHOD 3: Direct video sources
+        document.select("source[src], video source").forEach { source ->
             val videoUrl = source.attr("src").toAbsolute()
             if (videoUrl.isNotBlank() && (videoUrl.contains(".mp4") || videoUrl.contains(".m3u8"))) {
                 val qualityAttr = source.attr("size").ifBlank { source.attr("label") }
