@@ -19,22 +19,6 @@ class EgyDead : MainAPI() {
         }
     }
 
-    override suspend fun search(query: String): List<SearchResponse> {
-        val url = "$mainUrl/?s=${query.replace(" ", "+")}"
-        val document = app.get(url).document
-
-        return document.select("div.item").mapNotNull {
-            val title = it.selectFirst("h1")?.text() ?: return@mapNotNull null
-            val href = it.selectFirst("a")?.attr("href")?.toAbsolute() ?: return@mapNotNull null
-            val poster = it.selectFirst("img")?.attr("src")?.toAbsolute()
-            val type = if (href.contains("/مسلسل") || href.contains("series")) TvType.TvSeries else TvType.Movie
-
-            newMovieSearchResponse(title, href, type) {
-                this.posterUrl = poster
-            }
-        }
-    }
-
     override val mainPage = mainPageOf(
         "$mainUrl/category/movies/" to "أفلام",
         "$mainUrl/category/series/" to "مسلسلات",
@@ -42,13 +26,19 @@ class EgyDead : MainAPI() {
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val url = if (page == 1) request.data else "${request.data}page/$page"
+        val url = if (page == 1) request.data else "${request.data}/page/$page"
         val document = app.get(url).document
 
         val items = document.select("div.item").mapNotNull {
-            val title = it.selectFirst("h1")?.text() ?: return@mapNotNull null
-            val href = it.selectFirst("a")?.attr("href")?.toAbsolute() ?: return@mapNotNull null
+            val title = it.selectFirst("h1, h2, h3")?.text()
+                ?.takeUnless { t -> t.contains("القائمه", true) || t.contains("الرئيسيه", true) }
+                ?: return@mapNotNull null
+
+            val href = it.selectFirst("a")?.attr("href")?.toAbsolute()
+                ?: return@mapNotNull null
+
             val poster = it.selectFirst("img")?.attr("src")?.toAbsolute()
+
             newMovieSearchResponse(title, href, TvType.Movie) {
                 this.posterUrl = poster
             }
@@ -57,31 +47,41 @@ class EgyDead : MainAPI() {
         return newHomePageResponse(request.name, items)
     }
 
+    override suspend fun search(query: String): List<SearchResponse> {
+        val url = "$mainUrl/?s=${query.replace(" ", "+")}"
+        val document = app.get(url).document
+        return document.select("div.item").mapNotNull {
+            val title = it.selectFirst("h1, h2, h3")?.text() ?: return@mapNotNull null
+            val href = it.selectFirst("a")?.attr("href")?.toAbsolute() ?: return@mapNotNull null
+            val poster = it.selectFirst("img")?.attr("src")?.toAbsolute()
+            val type = if (href.contains("/series/")) TvType.TvSeries else TvType.Movie
+
+            newMovieSearchResponse(title, href, type) {
+                this.posterUrl = poster
+            }
+        }
+    }
+
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url).document
-        val title = document.selectFirst("h1.entry-title, h1")?.text() ?: "غير معروف"
-        val poster = document.selectFirst("meta[property=og:image]")?.attr("content")?.toAbsolute()
-        val plot = document.selectFirst("meta[name=description]")?.attr("content")
+        val title = document.selectFirst("h1.entry-title, h1.title")?.text() ?: "غير معروف"
+        val poster = document.selectFirst("img.wp-post-image, .poster img")?.attr("src")?.toAbsolute()
+        val plot = document.selectFirst("div.story p, div.post-content p")?.text()
 
-        val episodeList = document.select(".episodes-list .EpsList a").map {
-            val name = it.text().trim()
-            val link = it.attr("href").toAbsolute()
-            newEpisode(link) {
-                this.name = name
+        val iframe = document.selectFirst("iframe")?.attr("src")?.toAbsolute()
+        val recommendations = document.select("div.item").mapNotNull {
+            val recTitle = it.selectFirst("h1, h2, h3")?.text() ?: return@mapNotNull null
+            val recHref = it.selectFirst("a")?.attr("href")?.toAbsolute() ?: return@mapNotNull null
+            val recPoster = it.selectFirst("img")?.attr("src")?.toAbsolute()
+            newMovieSearchResponse(recTitle, recHref, TvType.Movie) {
+                this.posterUrl = recPoster
             }
         }
 
-        val isSeries = episodeList.isNotEmpty()
-        return if (isSeries) {
-            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodeList) {
-                this.posterUrl = poster
-                this.plot = plot
-            }
-        } else {
-            newMovieLoadResponse(title, url, TvType.Movie, url) {
-                this.posterUrl = poster
-                this.plot = plot
-            }
+        return newMovieLoadResponse(title, url, TvType.Movie, url) {
+            this.posterUrl = poster
+            this.plot = plot
+            this.recommendations = recommendations
         }
     }
 
