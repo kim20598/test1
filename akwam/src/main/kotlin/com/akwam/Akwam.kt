@@ -82,41 +82,70 @@ class Akwam : MainAPI() {
     ): Boolean {
         val doc = app.get(data).document
 
-        // Extract all quality links using proven selectors
+        // Extract all quality links using the REAL structure
         val links = doc.select("div.tab-content.quality").map { element ->
-            val quality = getQualityFromId(element.attr("id").getIntFromText())
-            element.select(".col-lg-6 > a:contains(تحميل)").map { linkElement ->
-                if (linkElement.attr("href").contains("/download/")) {
-                    Pair(linkElement.attr("href").toAbsolute(), quality)
+            val qualityId = element.attr("id").substringAfter("tab-").toIntOrNull()
+            val quality = getQualityFromId(qualityId)
+            
+            element.select("a.link-btn").map { linkElement ->
+                val href = linkElement.attr("href").toAbsolute()
+                val isWatch = linkElement.hasClass("link-show")
+                val isDownload = linkElement.hasClass("link-download")
+                
+                if (isWatch || isDownload) {
+                    Pair(href, quality)
                 } else {
-                    // Transform URL for short links
-                    val url = "$mainUrl/download${
-                        linkElement.attr("href").split("/link")[1]
-                    }${data.split("/movie|/episode".toRegex())[1]}".toAbsolute()
-                    Pair(url, quality)
+                    null
                 }
-            }
+            }.filterNotNull()
         }.flatten()
 
-        // Process each download link using proven pattern
+        // Process each link
         links.forEach { (url, quality) ->
-            val linkDoc = app.get(url).document
-            val button = linkDoc.select("div.btn-loader > a")
-            val finalUrl = button.attr("href").toAbsolute()
-
-            // Use loadExtractor for safe link handling
-            loadExtractor(finalUrl, data, subtitleCallback, callback)
+            if (url.contains("/watch/")) {
+                // For watch links, extract directly
+                loadExtractor(url, data, subtitleCallback, callback)
+            } else if (url.contains("/link/")) {
+                // For download links, follow to get final URL
+                extractDownloadLink(url, quality, data, subtitleCallback, callback)
+            }
         }
         
         return true
     }
 
+    private suspend fun extractDownloadLink(
+        downloadUrl: String,
+        quality: Qualities,
+        referer: String,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ) {
+        try {
+            val downloadDoc = app.get(downloadUrl, referer = referer).document
+            
+            // Look for the final download button/link
+            val finalUrl = downloadDoc.select("a[href*='.mp4'], a[href*='.m3u8'], a.download-link, button[onclick*='download']")
+                .firstOrNull()?.attr("href")?.toAbsolute()
+            
+            if (!finalUrl.isNullOrBlank()) {
+                loadExtractor(finalUrl, downloadUrl, subtitleCallback, callback)
+            } else {
+                // If no direct link found, try to extract from the page
+                loadExtractor(downloadUrl, referer, subtitleCallback, callback)
+            }
+        } catch (e: Exception) {
+            // If extraction fails, try the original URL directly
+            loadExtractor(downloadUrl, referer, subtitleCallback, callback)
+        }
+    }
+
     private fun getQualityFromId(id: Int?): Qualities {
         return when (id) {
-            2 -> Qualities.P360
-            3 -> Qualities.P480
-            4 -> Qualities.P720
-            5 -> Qualities.P1080
+            5 -> Qualities.P1080  // tab-5 = 1080p
+            4 -> Qualities.P720   // tab-4 = 720p  
+            3 -> Qualities.P480   // tab-3 = 480p (if exists)
+            2 -> Qualities.P360   // tab-2 = 360p (if exists)
             else -> Qualities.Unknown
         }
     }
