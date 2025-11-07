@@ -145,9 +145,9 @@ class EgyDead : MainAPI() {
                     newExtractorLink(
                         source = this.name,
                         name = "${this.name} ${qualityAttr.ifBlank { "Direct" }}",
-                        url = videoUrl,
-                        referer = data
+                        url = videoUrl
                     ) {
+                        this.referer = data
                         this.quality = getQualityFromName(qualityAttr)
                         this.type = if (videoUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
                     }
