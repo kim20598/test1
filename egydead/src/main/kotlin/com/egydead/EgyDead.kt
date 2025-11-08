@@ -13,8 +13,7 @@ class EgyDead : MainAPI() {
     override var name = "EgyDead"
     override val usesWebView = false
     override val hasMainPage = true
-    override val hasQuickSearch = true
-    override val supportedTypes = setOf(TvType.TvSeries, TvType.Movie, TvType.Anime, TvType.AsianDrama)
+    override val supportedTypes = setOf(TvType.TvSeries, TvType.Movie, TvType.Anime)
 
     // Secondary domain for special sections
     private val tvDomain = "https://tv1.egydead.live"
@@ -31,12 +30,8 @@ class EgyDead : MainAPI() {
         val title = select(".BottomTitle").text().cleanTitle()
         val posterUrl = select("img").attr("src")
         val href = select("a").attr("href")
-        val category = select("span.cat_name").text()
-        
         val tvType = when {
-            category.contains("افلام") -> TvType.Movie
-            category.contains("انمي") || title.contains("انمي") -> TvType.Anime
-            category.contains("اسيوية") || category.contains("كورية") || category.contains("صينية") -> TvType.AsianDrama
+            select("span.cat_name").text().contains("افلام") -> TvType.Movie
             else -> TvType.TvSeries
         }
         
@@ -85,20 +80,11 @@ class EgyDead : MainAPI() {
         "$mainUrl/series-category/%d8%a8%d8%b1%d8%a7%d9%85%d8%ac-%d8%aa%d9%84%d9%81%d8%b2%d9%8a%d9%88%d9%86%d9%8a%d8%a9-1/?page=" to "TV Programs",
         "$mainUrl/category/%d8%b9%d8%b1%d9%88%d8%b6-%d9%88%d8%ad%d9%81%d9%84%d8%a7%d8%aa/?page=" to "Stand-up Shows & Concerts",
 
-        // Tags (Seasonal & Special)
-        "$mainUrl/tag/%d8%a7%d9%86%d9%85%d9%8a%d8%a7%d8%aa-%d8%ae%d8%b1%d9%8a%d9%81-2025/?page=" to "Fall 2025 Anime",
-        "$mainUrl/tag/%d8%a7%d9%86%d9%85%d9%8a%d8%a7%d8%aa-%d8%b5%d9%8a%d9%81-2025/?page=" to "Summer 2025 Anime",
-        "$mainUrl/tag/%d9%83%d8%a7%d8%b3-%d8%a7%d9%84%d8%b9%d8%a7%d9%84%d9%85-2022/?page=" to "World Cup 2022",
-
         // Special TV Domain Sections
         "$tvDomain/assembly/?page=" to "Movie Series",
         "$tvDomain/serie/?page=" to "Complete Series", 
         "$tvDomain/season/?page=" to "Full Seasons",
-        "$tvDomain/episode/?page=" to "Episodes",
-
-        // Special Categories
-        "$mainUrl/category/%d8%aa%d8%b1%d8%ac%d9%85%d8%a7%d8%aa-%d8%a7%d8%b3%d9%84%d8%a7%d9%85-%d8%a7%d9%84%d8%ac%d9%8a%d8%b2%d8%a7%d9%88%d9%8a/?page=" to "Islam El-Gizawy Translations",
-        "$mainUrl/category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d9%83%d8%b1%d8%aa%d9%88%d9%86/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d9%83%d8%b1%d8%aa%d9%88%d9%86-%d8%af%d9%8a%d8%b2%d9%86%d9%8a-%d8%a8%d8%a7%d9%84%d9%84%d9%87%d8%ac%d8%a9-%d8%a7%d9%84%d9%85%d8%b5%d8%b1%d9%8a%d8%a9/?page=" to "Disney Cartoons Egyptian"
+        "$tvDomain/episode/?page=" to "Episodes"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -128,12 +114,6 @@ class EgyDead : MainAPI() {
         val synopsis = doc.select("div.extra-content:contains(القصه) p").text()
         val year = doc.select("ul > li:contains(السنه) > a").text().getIntFromText()
         val tags = doc.select("ul > li:contains(النوع) > a").map { it.text() }
-        val quality = doc.select("ul > li:contains(الجوده) > a").text()
-        val duration = doc.select("ul > li:contains(المده)").text().getIntFromText()
-        val country = doc.select("ul > li:contains(البلد) > a").text()
-        val director = doc.select("ul > li:contains(المخرج) > a").text()
-        val actors = doc.select("ul > li:contains(الممثلين) > a").map { it.text() }
-        
         val recommendations = doc.select("div.related-posts > ul > li").mapNotNull { element ->
             element.toSearchResponse()
         }
@@ -146,10 +126,6 @@ class EgyDead : MainAPI() {
                 this.plot = synopsis
                 this.tags = tags
                 this.year = year
-                this.quality = SearchQuality(quality)
-                this.duration = duration
-                this.directors = listOf(director)
-                this.actors = actors
                 addTrailer(youtubeTrailer)
             }
         } else {
@@ -183,10 +159,6 @@ class EgyDead : MainAPI() {
                 this.plot = synopsis
                 this.recommendations = recommendations
                 this.year = year
-                this.quality = SearchQuality(quality)
-                this.duration = duration
-                this.directors = listOf(director)
-                this.actors = actors
                 addTrailer(youtubeTrailer)
             }
         }
