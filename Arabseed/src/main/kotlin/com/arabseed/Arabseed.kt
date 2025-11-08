@@ -42,49 +42,49 @@ class EgyDead : MainAPI() {
 
     override val mainPage = mainPageOf(
         // Movies Categories (افلام)
-        "$mainUrl/category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d8%a7%d8%ac%d9%86%d8%a8%d9%8a-%d8%a7%d9%88%d9%86%d9%84%d8%a7%d9%8a%d9%86/?page=" to "Foreign Movies | أفلام أجنبي",
-        "$mainUrl/category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d9%83%d8%b1%d8%aa%d9%88%d9%86/?page=" to "Cartoon Movies | أفلام كرتون",
-        "$mainUrl/category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d8%a7%d8%b3%d9%8a%d9%88%d9%8a%d8%a9/?page=" to "Asian Movies | أفلام آسيوية",
-        "$mainUrl/category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d8%aa%d8%b1%d9%83%d9%8a%d8%a9/?page=" to "Turkish Movies | أفلام تركية",
-        "$mainUrl/category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d9%88%d8%ab%d8%a7%d8%a6%d9%82%d9%8a%d8%a9/?page=" to "Documentary Movies | أفلام وثائقية",
-        "$mainUrl/category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d8%a7%d8%ac%d9%86%d8%a8%d9%8a%d8%a9-%d9%85%d8%af%d8%a8%d9%84%d8%ac%d8%a9/?page=" to "Dubbed Foreign Movies | أفلام أجنبية مدبلجة",
-        "$mainUrl/category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d9%87%d9%86%d8%af%d9%8a%d8%a9/?page=" to "Indian Movies | أفلام هندية",
-        "$mainUrl/category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d8%b9%d8%b1%d8%a8%d9%8a/?page=" to "Arabic Movies | أفلام عربي",
-        "$mainUrl/category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d8%a7%d9%86%d9%85%d9%8a/?page=" to "Anime Movies | أفلام أنمي",
+        "$mainUrl/category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d8%a7%d8%ac%d9%86%d8%a8%d9%8a-%d8%a7%d9%88%d9%86%d9%84%d8%a7%d9%8a%d9%86/?page=" to "Foreign Movies",
+        "$mainUrl/category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d9%83%d8%b1%d8%aa%d9%88%d9%86/?page=" to "Cartoon Movies",
+        "$mainUrl/category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d8%a7%d8%b3%d9%8a%d9%88%d9%8a%d8%a9/?page=" to "Asian Movies",
+        "$mainUrl/category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d8%aa%d8%b1%d9%83%d9%8a%d8%a9/?page=" to "Turkish Movies",
+        "$mainUrl/category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d9%88%d8%ab%d8%a7%d8%a6%d9%82%d9%8a%d8%a9/?page=" to "Documentary Movies",
+        "$mainUrl/category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d8%a7%d8%ac%d9%86%d8%a8%d9%8a%d8%a9-%d9%85%d8%af%d8%a8%d9%84%d8%ac%d8%a9/?page=" to "Dubbed Foreign Movies",
+        "$mainUrl/category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d9%87%d9%86%d8%af%d9%8a%d8%a9/?page=" to "Indian Movies",
+        "$mainUrl/category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d8%b9%d8%b1%d8%a8%d9%8a/?page=" to "Arabic Movies",
+        "$mainUrl/category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d8%a7%d9%86%d9%85%d9%8a/?page=" to "Anime Movies",
         
         // Series Categories (مسلسلات)
-        "$mainUrl/series-category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%a7%d8%ac%d9%86%d8%a8%d9%8a-1/?page=" to "Foreign Series | مسلسلات أجنبي",
-        "$mainUrl/series-category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d9%83%d8%b1%d8%aa%d9%88%d9%86/?page=" to "Cartoon Series | مسلسلات كرتون",
-        "$mainUrl/series-category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%a7%d8%b3%d9%8a%d9%88%d9%8a%d8%a9/?page=" to "Asian Series | مسلسلات آسيوية",
-        "$mainUrl/series-category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%aa%d8%b1%d9%83%d9%8a%d8%a9-%d8%a7/?page=" to "Turkish Series | مسلسلات تركية",
-        "$mainUrl/series-category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d9%84%d8%a7%d8%aa%d9%8a%d9%86%d9%8a%d8%a9/?page=" to "Latin Series | مسلسلات لاتينية",
-        "$mainUrl/series-category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d9%88%d8%ab%d8%a7%d8%a6%d9%82%d9%8a%d8%a9/?page=" to "Documentary Series | مسلسلات وثائقية",
-        "$mainUrl/series-category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%b9%d8%b1%d8%a8%d9%8a/?page=" to "Arabic Series | مسلسلات عربي",
-        "$mainUrl/series-category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%a7%d9%81%d8%b1%d9%8a%d9%82%d9%8a%d8%a9/?page=" to "African Series | مسلسلات أفريقية",
+        "$mainUrl/series-category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%a7%d8%ac%d9%86%d8%a8%d9%8a-1/?page=" to "Foreign Series",
+        "$mainUrl/series-category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d9%83%d8%b1%d8%aa%d9%88%d9%86/?page=" to "Cartoon Series",
+        "$mainUrl/series-category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%a7%d8%b3%d9%8a%d9%88%d9%8a%d8%a9/?page=" to "Asian Series",
+        "$mainUrl/series-category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%aa%d8%b1%d9%83%d9%8a%d8%a9-%d8%a7/?page=" to "Turkish Series",
+        "$mainUrl/series-category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d9%84%d8%a7%d8%aa%d9%8a%d9%86%d9%8a%d8%a9/?page=" to "Latin Series",
+        "$mainUrl/series-category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d9%88%d8%ab%d8%a7%d8%a6%d9%82%d9%8a%d8%a9/?page=" to "Documentary Series",
+        "$mainUrl/series-category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%b9%d8%b1%d8%a8%d9%8a/?page=" to "Arabic Series",
+        "$mainUrl/series-category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%a7%d9%81%d8%b1%d9%8a%d9%82%d9%8a%d8%a9/?page=" to "African Series",
 
         // Anime Categories (انمي)
-        "$mainUrl/series-category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%a7%d9%86%d9%85%d9%8a/?page=" to "Anime Series | مسلسلات أنمي",
-        "$mainUrl/series-category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%a7%d9%86%d9%85%d9%8a-%d9%85%d8%af%d8%a8%d9%84%d8%ac%d8%a9/?page=" to "Dubbed Anime Series | مسلسلات أنمي مدبلجة",
-        "$mainUrl/series-category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d8%a7%d9%86%d9%85%d9%8a/?page=" to "Anime Movies | أفلام أنمي",
-        "$mainUrl/series-category/%d8%a7%d9%86%d9%85%d9%8a%d8%a7%d8%aa-%d8%b5%d9%8a%d9%86%d9%8a%d8%a9/?page=" to "Chinese Anime | أنميات صينية",
-        "$mainUrl/series-category/%d8%a7%d9%86%d9%85%d9%8a%d8%a7%d8%aa-%d9%83%d9%88%d8%b1%d9%8a%d8%a9/?page=" to "Korean Anime | أنميات كورية",
+        "$mainUrl/series-category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%a7%d9%86%d9%85%d9%8a/?page=" to "Anime Series",
+        "$mainUrl/series-category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%a7%d9%86%d9%85%d9%8a-%d9%85%d8%af%d8%a8%d9%84%d8%ac%d8%a9/?page=" to "Dubbed Anime Series",
+        "$mainUrl/series-category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d8%a7%d9%86%d9%85%d9%8a/?page=" to "Anime Movies",
+        "$mainUrl/series-category/%d8%a7%d9%86%d9%85%d9%8a%d8%a7%d8%aa-%d8%b5%d9%8a%d9%86%d9%8a%d8%a9/?page=" to "Chinese Anime",
+        "$mainUrl/series-category/%d8%a7%d9%86%d9%85%d9%8a%d8%a7%d8%aa-%d9%83%d9%88%d8%b1%d9%8a%d8%a9/?page=" to "Korean Anime",
         
         // Dubbed Series (المدبلج)
-        "$mainUrl/series-category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%a7%d8%ac%d9%86%d8%a8%d9%8a-%d9%85%d8%af%d8%a8%d9%84%d8%ac%d8%a9/?page=" to "Dubbed Foreign Series | مسلسلات أجنبي مدبلجة",
-        "$mainUrl/series-category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%aa%d8%b1%d9%83%d9%8a%d8%a9-%d9%85%d8%af%d8%a8%d9%84%d8%ac%d8%a9/?page=" to "Dubbed Turkish Series | مسلسلات تركية مدبلجة",
-        "$mainUrl/series-category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d9%83%d8%b1%d8%aa%d9%88%d9%86-%d9%85%d8%af%d8%a8%d9%84%d8%ac%d8%a9/?page=" to "Dubbed Cartoon Series | مسلسلات كرتون مدبلجة",
-        "$mainUrl/series-category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d9%84%d8%a7%d8%aa%d9%8a%d9%86%d9%8a%d8%a9-%d9%85%d8%af%d8%a8%d9%84%d8%ac%d8%a9/?page=" to "Dubbed Latin Series | مسلسلات لاتينية مدبلجة",
+        "$mainUrl/series-category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%a7%d8%ac%d9%86%d8%a8%d9%8a-%d9%85%d8%af%d8%a8%d9%84%d8%ac%d8%a9/?page=" to "Dubbed Foreign Series",
+        "$mainUrl/series-category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%aa%d8%b1%d9%83%d9%8a%d8%a9-%d9%85%d8%af%d8%a8%d9%84%d8%ac%d8%a9/?page=" to "Dubbed Turkish Series",
+        "$mainUrl/series-category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d9%83%d8%b1%d8%aa%d9%88%d9%86-%d9%85%d8%af%d8%a8%d9%84%d8%ac%d8%a9/?page=" to "Dubbed Cartoon Series",
+        "$mainUrl/series-category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d9%84%d8%a7%d8%aa%d9%8a%d9%86%d9%8a%d8%a9-%d9%85%d8%af%d8%a8%d9%84%d8%ac%d8%a9/?page=" to "Dubbed Latin Series",
 
         // Miscellaneous Content
-        "$mainUrl/category/%d8%b1%d9%8a%d8%a7%d8%b6%d8%a9/?page=" to "Sports | رياضة",
-        "$mainUrl/series-category/%d8%a8%d8%b1%d8%a7%d9%85%d8%ac-%d8%aa%d9%84%d9%81%d8%b2%d9%8a%d9%88%d9%86%d9%8a%d8%a9-1/?page=" to "TV Programs | برامج تلفزيونية",
-        "$mainUrl/category/%d8%b9%d8%b1%d9%88%d8%b6-%d9%88%d8%ad%d9%81%d9%84%d8%a7%d8%aa/?page=" to "Stand-up Shows & Concerts | عروض وحفلات",
+        "$mainUrl/category/%d8%b1%d9%8a%d8%a7%d8%b6%d8%a9/?page=" to "Sports",
+        "$mainUrl/series-category/%d8%a8%d8%b1%d8%a7%d9%85%d8%ac-%d8%aa%d9%84%d9%81%d8%b2%d9%8a%d9%88%d9%86%d9%8a%d8%a9-1/?page=" to "TV Programs",
+        "$mainUrl/category/%d8%b9%d8%b1%d9%88%d8%b6-%d9%88%d8%ad%d9%81%d9%84%d8%a7%d8%aa/?page=" to "Stand-up Shows & Concerts",
 
         // Special TV Domain Sections
-        "$tvDomain/assembly/?page=" to "Movie Series | سلاسل أفلام",
-        "$tvDomain/serie/?page=" to "Complete Series | المسلسلات الكاملة", 
-        "$tvDomain/season/?page=" to "Full Seasons | المواسم الكاملة",
-        "$tvDomain/episode/?page=" to "Episodes | الحلقات"
+        "$tvDomain/assembly/?page=" to "Movie Series",
+        "$tvDomain/serie/?page=" to "Complete Series", 
+        "$tvDomain/season/?page=" to "Full Seasons",
+        "$tvDomain/episode/?page=" to "Episodes"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
