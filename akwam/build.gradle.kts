@@ -3,7 +3,7 @@ version = 4
 
 
 cloudstream {
-    language = "hi"
+    language = "ar"
     // All of these properties are optional, you can safely remove them
 
     authors = listOf("kim20598")
