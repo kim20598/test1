@@ -43,58 +43,48 @@ class EgyDead : MainAPI() {
     // ✅ SAFE - Main page
     override val mainPage = mainPageOf(
         // Movies Categories (افلام)
-    "https://egydead.skin/category/افلام-اجنبي-اونلاين/" to "Foreign Movies",
-    "https://egydead.skin/category/افلام-كرتون/" to "Cartoon Movies", 
-    "https://egydead.skin/category/افلام-اسيوية/" to "Asian Movies",
-    "https://egydead.skin/category/افلام-تركية/" to "Turkish Movies",
-    "https://egydead.skin/category/افلام-وثائقية/" to "Documentary Movies",
-    "https://egydead.skin/category/افلام-اجنبية-مدبلجة/" to "Dubbed Foreign Movies",
-    "https://egydead.skin/category/افلام-هندية/" to "Indian Movies",
-    "https://egydead.skin/category/افلام-عربي/" to "Arabic Movies",
-    "https://egydead.skin/category/افلام-انمي/" to "Anime Movies",
+    "$mainUrl/category/افلام-اجنبي-اونلاين/?page=" to "Foreign Movies",
+    "$mainUrl/category/افلام-كرتون/?page=" to "Cartoon Movies",
+    "$mainUrl/category/افلام-اسيوية/?page=" to "Asian Movies",
+    "$mainUrl/category/افلام-تركية/?page=" to "Turkish Movies",
+    "$mainUrl/category/افلام-وثائقية/?page=" to "Documentary Movies",
+    "$mainUrl/category/افلام-اجنبية-مدبلجة/?page=" to "Dubbed Foreign Movies",
+    "$mainUrl/category/افلام-هندية/?page=" to "Indian Movies",
+    "$mainUrl/category/افلام-عربي/?page=" to "Arabic Movies",
+    "$mainUrl/category/افلام-انمي/?page=" to "Anime Movies",
     
-    // Special Movie Sections
-    "https://tv1.egydead.live/assembly/" to "Movie Series",
-    "https://egydead.skin/category/ترجمات-اسلام-الجيزاوي/" to "Islam El-Gizawy Translations",
-    "https://egydead.skin/category/افلام-كرتون/افلام-كرتون-ديزني-باللهجة-المصرية/" to "Disney Cartoons in Egyptian Dialect",
-
     // Series Categories (مسلسلات)
-    "https://egydead.skin/series-category/مسلسلات-اجنبي-1/" to "Foreign Series",
-    "https://egydead.skin/series-category/مسلسلات-كرتون/" to "Cartoon Series",
-    "https://egydead.skin/series-category/مسلسلات-اسيوية/" to "Asian Series", 
-    "https://egydead.skin/series-category/مسلسلات-تركية-ا/" to "Turkish Series",
-    "https://egydead.skin/series-category/مسلسلات-لاتينية/" to "Latin Series",
-    "https://egydead.skin/series-category/مسلسلات-وثائقية/" to "Documentary Series",
-    "https://egydead.skin/series-category/مسلسلات-عربي/" to "Arabic Series",
-    "https://egydead.skin/series-category/مسلسلات-افريقية/" to "African Series",
+    "$mainUrl/series-category/مسلسلات-اجنبي-1/?page=" to "Foreign Series",
+    "$mainUrl/series-category/مسلسلات-كرتون/?page=" to "Cartoon Series",
+    "$mainUrl/series-category/مسلسلات-اسيوية/?page=" to "Asian Series",
+    "$mainUrl/series-category/مسلسلات-تركية-ا/?page=" to "Turkish Series",
+    "$mainUrl/series-category/مسلسلات-لاتينية/?page=" to "Latin Series",
+    "$mainUrl/series-category/مسلسلات-وثائقية/?page=" to "Documentary Series",
+    "$mainUrl/series-category/مسلسلات-عربي/?page=" to "Arabic Series",
+    "$mainUrl/series-category/مسلسلات-افريقية/?page=" to "African Series",
 
     // Anime Categories (انمي)
-    "https://egydead.skin/series-category/مسلسلات-انمي/" to "Anime Series",
-    "https://egydead.skin/series-category/مسلسلات-انمي-مدبلجة/" to "Dubbed Anime Series",
-    "https://egydead.skin/series-category/افلام-انمي/" to "Anime Movies",
-    "https://egydead.skin/series-category/انميات-صينية/" to "Chinese Anime",
-    "https://egydead.skin/series-category/انميات-كورية/" to "Korean Anime",
+    "$mainUrl/series-category/مسلسلات-انمي/?page=" to "Anime Series",
+    "$mainUrl/series-category/مسلسلات-انمي-مدبلجة/?page=" to "Dubbed Anime Series",
+    "$mainUrl/series-category/افلام-انمي/?page=" to "Anime Movies",
+    "$mainUrl/series-category/انميات-صينية/?page=" to "Chinese Anime",
+    "$mainUrl/series-category/انميات-كورية/?page=" to "Korean Anime",
     
-    // Seasonal Anime Tags
-    "https://egydead.skin/tag/انميات-خريف-2025/" to "Fall 2025 Anime",
-    "https://egydead.skin/tag/انميات-صيف-2025/" to "Summer 2025 Anime",
-
     // Dubbed Series (المدبلج)
-    "https://egydead.skin/series-category/مسلسلات-اجنبي-مدبلجة/" to "Dubbed Foreign Series", 
-    "https://egydead.skin/series-category/مسلسلات-تركية-مدبلجة/" to "Dubbed Turkish Series",
-    "https://egydead.skin/series-category/مسلسلات-كرتون-مدبلجة/" to "Dubbed Cartoon Series",
-    "https://egydead.skin/series-category/مسلسلات-لاتينية-مدبلجة/" to "Dubbed Latin Series",
+    "$mainUrl/series-category/مسلسلات-اجنبي-مدبلجة/?page=" to "Dubbed Foreign Series",
+    "$mainUrl/series-category/مسلسلات-تركية-مدبلجة/?page=" to "Dubbed Turkish Series",
+    "$mainUrl/series-category/مسلسلات-كرتون-مدبلجة/?page=" to "Dubbed Cartoon Series",
+    "$mainUrl/series-category/مسلسلات-لاتينية-مدبلجة/?page=" to "Dubbed Latin Series",
 
     // Miscellaneous Content
-    "https://egydead.skin/category/رياضة/" to "Sports",
-    "https://egydead.skin/series-category/برامج-تلفزيونية-1/" to "TV Programs",
-    "https://egydead.skin/category/عروض-وحفلات/" to "Stand-up Shows & Concerts",
-    "https://egydead.skin/tag/كاس-العالم-2022/" to "World Cup 2022",
+    "$mainUrl/category/رياضة/?page=" to "Sports",
+    "$mainUrl/series-category/برامج-تلفزيونية-1/?page=" to "TV Programs",
+    "$mainUrl/category/عروض-وحفلات/?page=" to "Stand-up Shows & Concerts",
 
-    // Series Structure Pages
-    "https://tv1.egydead.live/serie/" to "Complete Series",
-    "https://tv1.egydead.live/season/" to "Full Seasons", 
-    "https://tv1.egydead.live/episode/" to "Episodes"
+    // Special Sections (without pagination if needed separately)
+    "$mainUrl/tag/انميات-خريف-2025/?page=" to "Fall 2025 Anime",
+    "$mainUrl/tag/انميات-صيف-2025/?page=" to "Summer 2025 Anime",
+    "$mainUrl/tag/كاس-العالم-2022/?page=" to "World Cup 2022"
     )
 
     // ✅ SAFE - getMainPage
