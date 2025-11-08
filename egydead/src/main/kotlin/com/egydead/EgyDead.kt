@@ -8,7 +8,6 @@ import org.jsoup.nodes.Element
 import java.net.URLEncoder
 
 class EgyDead : MainAPI() {
-    // ✅ SAFE - All properties
     override var lang = "ar"
     override var mainUrl = "https://egydead.skin"
     override var name = "EgyDead"
@@ -16,7 +15,6 @@ class EgyDead : MainAPI() {
     override val hasMainPage = true
     override val supportedTypes = setOf(TvType.TvSeries, TvType.Movie, TvType.Anime)
 
-    // ✅ SAFE - Helper functions
     private fun String.getIntFromText(): Int? {
         return Regex("""\d+""").find(this)?.groupValues?.firstOrNull()?.toIntOrNull()
     }
@@ -25,7 +23,6 @@ class EgyDead : MainAPI() {
         return this.replace("جميع مواسم مسلسل|مترجم كامل|مشاهدة فيلم|مترجم|انمي|الموسم.*|مترجمة كاملة|مسلسل|كاملة".toRegex(), "").trim()
     }
 
-    // ✅ SAFE - Search response
     private fun Element.toSearchResponse(): SearchResponse {
         val title = select(".BottomTitle").text().cleanTitle()
         val posterUrl = select("img").attr("src")
@@ -40,44 +37,13 @@ class EgyDead : MainAPI() {
         }
     }
 
-    // ✅ SAFE - Main page
     override val mainPage = mainPageOf(
-        // Movies Categories (افلام)
-    "$mainUrl/category/افلام-اجنبي-اونلاين/?page=" to "Foreign Movies",
-    "$mainUrl/category/افلام-كرتون/?page=" to "Cartoon Movies",
-    "$mainUrl/category/افلام-اسيوية/?page=" to "Asian Movies",
-    "$mainUrl/category/افلام-تركية/?page=" to "Turkish Movies",
-    "$mainUrl/category/افلام-وثائقية/?page=" to "Documentary Movies",
-    "$mainUrl/category/افلام-اجنبية-مدبلجة/?page=" to "Dubbed Foreign Movies",
-    "$mainUrl/category/افلام-هندية/?page=" to "Indian Movies",
-    "$mainUrl/category/افلام-عربي/?page=" to "Arabic Movies",
-    "$mainUrl/category/افلام-انمي/?page=" to "Anime Movies",
-    
-    // Series Categories (مسلسلات)
-    "$mainUrl/series-category/مسلسلات-اجنبي-1/?page=" to "Foreign Series",
-    "$mainUrl/series-category/مسلسلات-كرتون/?page=" to "Cartoon Series",
-    "$mainUrl/series-category/مسلسلات-اسيوية/?page=" to "Asian Series",
-    "$mainUrl/series-category/مسلسلات-تركية-ا/?page=" to "Turkish Series",
-    "$mainUrl/series-category/مسلسلات-لاتينية/?page=" to "Latin Series",
-    "$mainUrl/series-category/مسلسلات-وثائقية/?page=" to "Documentary Series",
-    "$mainUrl/series-category/مسلسلات-عربي/?page=" to "Arabic Series",
-    "$mainUrl/series-category/مسلسلات-افريقية/?page=" to "African Series",
-
-    // Anime Categories (انمي)
-    "$mainUrl/series-category/مسلسلات-انمي/?page=" to "Anime Series",
-    "$mainUrl/series-category/مسلسلات-انمي-مدبلجة/?page=" to "Dubbed Anime Series",
-    "$mainUrl/series-category/افلام-انمي/?page=" to "Anime Movies",
-    "$mainUrl/series-category/انميات-صينية/?page=" to "Chinese Anime",
-    "$mainUrl/series-category/انميات-كورية/?page=" to "Korean Anime",
-    
-    // Dubbed Series (المدبلج)
-    "$mainUrl/series-category/مسلسلات-اجنبي-مدبلجة/?page=" to "Dubbed Foreign Series",
-    "$mainUrl/series-category/مسلسلات-تركية-مدبلجة/?page=" to "Dubbed Turkish Series",
-    "$mainUrl/series-category/مسلسلات-كرتون-مدبلجة/?page=" to "Dubbed Cartoon Series",
-    "$mainUrl/series-category/مسلسلات-لاتينية-مدبلجة/?page=" to "Dubbed Latin Series",
+        "$mainUrl/category/افلام-اجنبي/?page=" to "English Movies",
+        "$mainUrl/category/افلام-اسيوية/?page=" to "Asian Movies", 
+        "$mainUrl/season/?page=" to "Series",
+        "$mainUrl/category/انمي-مسلسلات/?page=" to "Anime Series"
     )
 
-    // ✅ SAFE - getMainPage
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val document = app.get(request.data + page).document
         val home = document.select("li.movieItem").mapNotNull {
@@ -86,7 +52,6 @@ class EgyDead : MainAPI() {
         return newHomePageResponse(request.name, home)
     }
 
-    // ✅ SAFE - search function
     override suspend fun search(query: String): List<SearchResponse> {
         if (query.length < 3) return emptyList()
         val encodedQuery = URLEncoder.encode(query, "UTF-8")
@@ -97,7 +62,6 @@ class EgyDead : MainAPI() {
         }
     }
 
-    // ✅ SAFE - load function (NO MORE category/SCORE ISSUES)
     override suspend fun load(url: String): LoadResponse {
         val doc = app.get(url).document
         val title = doc.select("div.singleTitle em").text().cleanTitle()
@@ -108,7 +72,7 @@ class EgyDead : MainAPI() {
         val year = doc.select("ul > li:contains(السنه) > a").text().getIntFromText()
         val tags = doc.select("ul > li:contains(النوع) > a").map { it.text() }
         val recommendations = doc.select("div.related-posts > ul > li").mapNotNull { element ->
-            Episodes.toSearchResponse()
+            element.toSearchResponse()
         }
         val youtubeTrailer = doc.select("div.popupContent > iframe").attr("src")
         
@@ -129,7 +93,7 @@ class EgyDead : MainAPI() {
                 seasonList.forEachIndexed { index, season ->
                     val seasonDoc = app.get(season.attr("href")).document
                     seasonDoc.select("div.EpsList > li > a").forEach {
-                        episodes.addnewEpisodee(it.attr("href")) {
+                        episodes.add(newEpisode(it.attr("href")) {
                             name = it.attr("title")
                             this.season = index + 1
                             episode = it.text().getIntFromText() ?: 1
@@ -157,7 +121,6 @@ class EgyDead : MainAPI() {
         }
     }
 
-    // ✅ SAFE - loadLinks function
     override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
         var foundLinks = false
         
