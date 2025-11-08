@@ -7,11 +7,13 @@ buildscript {
     repositories {
         google()
         mavenCentral()
+        // Shitpack repo which contains our tools and dependencies
         maven("https://jitpack.io")
     }
 
     dependencies {
         classpath("com.android.tools.build:gradle:8.7.3")
+        // Cloudstream gradle plugin which makes everything work and builds plugins
         classpath("com.github.recloudstream:gradle:-SNAPSHOT")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.1.0")
     }
@@ -25,11 +27,9 @@ allprojects {
     }
 }
 
-fun Project.cloudstream(configuration: CloudstreamExtension.() -> Unit) =
-    extensions.getByName<CloudstreamExtension>("cloudstream").configuration()
+fun Project.cloudstream(configuration: CloudstreamExtension.() -> Unit) = extensions.getByName<CloudstreamExtension>("cloudstream").configuration()
 
-fun Project.android(configuration: BaseExtension.() -> Unit) =
-    extensions.getByName<BaseExtension>("android").configuration()
+fun Project.android(configuration: BaseExtension.() -> Unit) = extensions.getByName<BaseExtension>("android").configuration()
 
 subprojects {
     apply(plugin = "com.android.library")
@@ -37,16 +37,17 @@ subprojects {
     apply(plugin = "com.lagradost.cloudstream3.gradle")
 
     cloudstream {
+        // when running through github workflow, GITHUB_REPOSITORY should contain current repository name
         setRepo(System.getenv("GITHUB_REPOSITORY") ?: "user/repo")
     }
 
     android {
-        namespace = project.name // will use module name as namespace
+        namespace = "com.example"
 
         defaultConfig {
             minSdk = 21
-            compileSdkVersion(34)
-            targetSdk = 34
+            compileSdkVersion(35)
+            targetSdk = 35
         }
 
         compileOptions {
@@ -56,9 +57,8 @@ subprojects {
 
         tasks.withType<KotlinJvmCompile> {
             compilerOptions {
-                jvmTarget.set(JvmTarget.JVM_1_8)
+                jvmTarget.set(JvmTarget.JVM_1_8) // Required
                 freeCompilerArgs.addAll(
-                    "-XXLanguage:+BreakContinueInInlineLambdas",
                     "-Xno-call-assertions",
                     "-Xno-param-assertions",
                     "-Xno-receiver-assertions"
@@ -71,17 +71,18 @@ subprojects {
         val cloudstream by configurations
         val implementation by configurations
 
+        // Stubs for all cloudstream classes
         cloudstream("com.lagradost:cloudstream3:pre-release")
 
-        // Added missing dependencies from old module Gradle
-        implementation("com.google.android.material:material:1.13.0")
-        implementation("androidx.browser:browser:1.9.0")
-        implementation("androidx.room:room-ktx:2.8.0")
-        implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
-        implementation(kotlin("stdlib"))
-        implementation("com.github.Blatzar:NiceHttp:0.4.11")
-        implementation("org.jsoup:jsoup:1.18.3")
-        implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.13.1")
+        // These dependencies can include any of those which are added by the app,
+        // but you don't need to include any of them if you don't need them.
+        // https://github.com/recloudstream/cloudstream/blob/master/app/build.gradle.kts
+        implementation(kotlin("stdlib")) // Adds Standard Kotlin Features
+        implementation("com.github.Blatzar:NiceHttp:0.4.11") // HTTP Lib
+        implementation("org.jsoup:jsoup:1.18.3") // HTML Parser
+        // IMPORTANT: Do not bump Jackson above 2.13.1, as newer versions will
+        // break compatibility on older Android devices.
+        implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.13.1") // JSON Parser
     }
 }
 
