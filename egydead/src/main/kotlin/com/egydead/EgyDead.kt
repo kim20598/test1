@@ -75,16 +75,6 @@ class EgyDead : MainAPI() {
     "$mainUrl/series-category/مسلسلات-تركية-مدبلجة/?page=" to "Dubbed Turkish Series",
     "$mainUrl/series-category/مسلسلات-كرتون-مدبلجة/?page=" to "Dubbed Cartoon Series",
     "$mainUrl/series-category/مسلسلات-لاتينية-مدبلجة/?page=" to "Dubbed Latin Series",
-
-    // Miscellaneous Content
-    "$mainUrl/category/رياضة/?page=" to "Sports",
-    "$mainUrl/series-category/برامج-تلفزيونية-1/?page=" to "TV Programs",
-    "$mainUrl/category/عروض-وحفلات/?page=" to "Stand-up Shows & Concerts",
-
-    // Special Sections (without pagination if needed separately)
-    "$mainUrl/tag/انميات-خريف-2025/?page=" to "Fall 2025 Anime",
-    "$mainUrl/tag/انميات-صيف-2025/?page=" to "Summer 2025 Anime",
-    "$mainUrl/tag/كاس-العالم-2022/?page=" to "World Cup 2022"
     )
 
     // ✅ SAFE - getMainPage
