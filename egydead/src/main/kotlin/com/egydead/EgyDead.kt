@@ -43,9 +43,34 @@ class EgyDead : MainAPI() {
     // ✅ SAFE - Main page
     override val mainPage = mainPageOf(
         "$mainUrl/category/افلام-اجنبي/?page=" to "English Movies",
-        "$mainUrl/category/افلام-اسيوية/?page=" to "Asian Movies", 
-        "$mainUrl/season/?page=" to "Series",
-        "$mainUrl/category/انمي-مسلسلات/?page=" to "Anime Series"
+        "$mainUrl/category/افلام-اجنبي/?page=" to "Foreign Movies",
+    "$mainUrl/category/افلام-اسيوية/?page=" to "Asian Movies",
+    "$mainUrl/category/افلام-تركية/?page=" to "Turkish Movies",
+    "$mainUrl/category/افلام-كرتون/?page=" to "Cartoon Movies",
+    "$mainUrl/category/افلام-وثائقية/?page=" to "Documentary Movies",
+    "$mainUrl/category/افلام-هندية/?page=" to "Indian Movies",
+    "$mainUrl/category/افلام-عربي/?page=" to "Arabic Movies",
+
+    // Series Section (مسلسلات)
+    "$mainUrl/season/?page=" to "Series", // General series page
+    "$mainUrl/category/مسلسلات-اجنبي-مدبلجة/?page=" to "Dubbed Foreign Series",
+    "$mainUrl/category/مسلسلات-تركية-مدبلجة/?page=" to "Dubbed Turkish Series",
+    "$mainUrl/category/مسلسلات-اسيوية/?page=" to "Asian Series",
+    "$mainUrl/category/مسلسلات-لاتينية-مدبلجة/?page=" to "Dubbed Latin Series",
+    "$mainUrl/category/مسلسلات-كرتون-مدبلجة/?page=" to "Dubbed Cartoon Series",
+    "$mainUrl/category/مسلسلات-عربي/?page=" to "Arabic Series",
+    "$mainUrl/category/مسلسلات-انمي/?page=" to "Anime Series",
+    "$mainUrl/category/مسلسلات-انمي-مدبلجة/?page=" to "Dubbed Anime Series",
+
+    // Other Content Types
+    "$mainUrl/category/برامج-تلفزيونية/?page=" to "TV Shows",
+    "$mainUrl/category/ستاند-اب-وحفلات/?page=" to "Stand-up & Concerts",
+    "$mainUrl/category/كاس-العالم-2022/?page=" to "World Cup 2022",
+    
+    // Special Pages (if they are separate sections)
+    "$mainUrl/المسلسلات-الكاملة/?page=" to "Complete Series",
+    "$mainUrl/المواسم-الكاملة/?page=" to "Full Seasons",
+    "$mainUrl/الحلقات/?page=" to "Episodes"
     )
 
     // ✅ SAFE - getMainPage
@@ -68,7 +93,7 @@ class EgyDead : MainAPI() {
         }
     }
 
-    // ✅ SAFE - load function (NO MORE RATING/SCORE ISSUES)
+    // ✅ SAFE - load function (NO MORE category/SCORE ISSUES)
     override suspend fun load(url: String): LoadResponse {
         val doc = app.get(url).document
         val title = doc.select("div.singleTitle em").text().cleanTitle()
