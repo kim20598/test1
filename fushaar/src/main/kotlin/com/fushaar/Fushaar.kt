@@ -23,13 +23,20 @@ class Fushaar : MainAPI() {
         return this.replace("مشاهدة وتحميل فلم|مشاهدة وتحميل|اونلاين|مترجم".toRegex(), "").trim()
     }
 
+    // Store poster URLs when we find them in search/main page
+    private val posterCache = mutableMapOf<String, String>()
+
     private fun Element.toSearchResponse(): SearchResponse {
         val title = select("h3").text().cleanTitle()
         
-        // FIXED: Only use data-lazy-src for posters (no fallback to src)
+        // Get the poster from data-lazy-src (the good one from main page)
         val posterUrl = select("img").attr("data-lazy-src")
-        
         val href = select("a").attr("href")
+        
+        // Store the poster URL for later use in load()
+        if (posterUrl.isNotBlank()) {
+            posterCache[href] = posterUrl
+        }
         
         return newMovieSearchResponse(title, href, TvType.Movie) {
             this.posterUrl = posterUrl
@@ -71,8 +78,8 @@ class Fushaar : MainAPI() {
         
         val title = doc.selectFirst("h1.entry-title, h1")?.text()?.cleanTitle() ?: "Unknown Title"
 
-        // FIXED: Only use data-lazy-src for movie poster (no fallback)
-        val posterUrl = doc.selectFirst("img[data-lazy-src]")?.attr("data-lazy-src") ?: ""
+        // FIXED: Use the same poster from main page instead of trying to extract from movie page
+        val posterUrl = posterCache[url] ?: ""
         
         val synopsis = doc.selectFirst(".entry-content, .post-content")?.text() ?: ""
         val year = doc.selectFirst(".year, .labels .year")?.text()?.getIntFromText()
