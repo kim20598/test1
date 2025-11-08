@@ -5,6 +5,7 @@ import com.lagradost.cloudstream3.utils.*
 import org.jsoup.Jsoup
 import com.lagradost.cloudstream3.network.CloudflareKiller
 import com.lagradost.cloudstream3.utils.Qualities
+import kotlinx.serialization.Serializable
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.utils.ExtractorLink
@@ -255,4 +256,5 @@ class Arabseed : MainAPI() {
         return true
     }
 }
+
 
