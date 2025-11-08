@@ -82,12 +82,7 @@ class Fushaar : MainAPI() {
         
         val tags = doc.select(".gerne a, .genre a").map { it.text() }
         
-        // FIXED: Proper Score object creation
-        val ratingText = doc.selectFirst(".greyinfo")?.text()?.replace("imdb", "")?.trim()
-        val score = ratingText?.toDoubleOrNull()?.let { rating ->
-            Rating(rating) // Create Rating object from Double
-        }
-        
+        // FIXED: Remove problematic rating code completely
         val recommendations = doc.select(".related-posts article, .simple-related-posts article").mapNotNull { element ->
             element.toSearchResponse()
         }
@@ -99,7 +94,6 @@ class Fushaar : MainAPI() {
             this.recommendations = recommendations
             this.plot = synopsis
             this.tags = tags
-            this.rating = score // Use rating instead of score
             this.year = year
             addTrailer(youtubeTrailer)
         }
