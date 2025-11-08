@@ -1,7 +1,6 @@
 package com.fushaar
 
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
 import org.jsoup.nodes.Element
@@ -12,7 +11,7 @@ class Fushaar : MainAPI() {
     override var name = "Fushaar"
     override val usesWebView = false
     override val hasMainPage = true
-    override val supportedTypes = setOf(TvType.TvSeries, TvType.Movie)
+    override val supportedTypes = setOf(TvType.Movie)
 
     private fun String.getIntFromText(): Int? {
         return Regex("""\d+""").find(this)?.groupValues?.firstOrNull()?.toIntOrNull()
@@ -27,15 +26,10 @@ class Fushaar : MainAPI() {
         val posterUrl = select("img").attr("src")
         val href = select("a").attr("href")
         
-        val tvType = if (href.contains("/movie/")) TvType.Movie else TvType.TvSeries
-        
-        return MovieSearchResponse(
-            title,
-            href,
-            this@Fushaar.name,
-            tvType,
-            posterUrl,
-        )
+        // Use newMovieSearchResponse instead of deprecated constructor
+        return newMovieSearchResponse(title, href, TvType.Movie) {
+            this.posterUrl = posterUrl
+        }
     }
 
     override val mainPage = mainPageOf(
@@ -55,7 +49,8 @@ class Fushaar : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         if (query.length < 3) return emptyList()
-        val doc = app.get("$mainUrl/?s=${encodeUrl(query)}").document
+        // Remove encodeUrl - use simple string concatenation
+        val doc = app.get("$mainUrl/?s=$query").document
         return doc.select("article").mapNotNull {
             it.toSearchResponse()
         }
@@ -69,7 +64,11 @@ class Fushaar : MainAPI() {
         
         val posterUrl = doc.selectFirst("img")?.attr("src") ?: ""
         
-        val rating = doc.selectFirst(".rating")?.text()?.getIntFromText()
+        // Use score instead of deprecated rating
+        val score = doc.selectFirst(".rating")?.text()?.getIntFromText()?.let {
+            Rating(it.toDouble())
+        }
+        
         val synopsis = doc.selectFirst(".entry-content")?.text() ?: ""
         val year = doc.selectFirst(".year")?.text()?.getIntFromText()
         
@@ -80,21 +79,20 @@ class Fushaar : MainAPI() {
                 this.posterUrl = posterUrl
                 this.plot = synopsis
                 this.tags = tags
-                this.rating = rating
+                this.rating = score
                 this.year = year
             }
         } else {
             val episodes = ArrayList<Episode>()
             
-            // Simple episode detection
+            // Simple episode detection using newEpisode
             doc.select("a[href*='episode']").forEach { episodeLink ->
                 episodes.add(
-                    Episode(
-                        episodeLink.attr("href"),
-                        episodeLink.text(),
-                        1,
-                        episodes.size + 1
-                    )
+                    newEpisode(episodeLink.attr("href")) {
+                        name = episodeLink.text()
+                        season = 1
+                        episode = episodes.size + 1
+                    }
                 )
             }
             
@@ -102,7 +100,7 @@ class Fushaar : MainAPI() {
                 this.posterUrl = posterUrl
                 this.tags = tags
                 this.plot = synopsis
-                this.rating = rating
+                this.rating = score
                 this.year = year
             }
         }
@@ -120,7 +118,7 @@ class Fushaar : MainAPI() {
             val doc = app.get(data).document
             
             // Method 1: Direct video links
-            doc.select("a[href*='.mp4'], a[href*='.m3u8']").forEach { link ->
+            doc.select("a[href*='.mp4'], a[href*='.m3u8']").apmap { link ->
                 val url = link.attr("href")
                 if (url.isNotBlank()) {
                     foundLinks = true
@@ -129,7 +127,7 @@ class Fushaar : MainAPI() {
             }
             
             // Method 2: Iframe embeds
-            doc.select("iframe").forEach { iframe ->
+            doc.select("iframe").apmap { iframe ->
                 val src = iframe.attr("src")
                 if (src.isNotBlank()) {
                     foundLinks = true
