@@ -42,35 +42,59 @@ class EgyDead : MainAPI() {
 
     // ✅ SAFE - Main page
     override val mainPage = mainPageOf(
-        "$mainUrl/category/افلام-اجنبي/?page=" to "English Movies",
-        "$mainUrl/category/افلام-اجنبي/?page=" to "Foreign Movies",
-    "$mainUrl/category/افلام-اسيوية/?page=" to "Asian Movies",
-    "$mainUrl/category/افلام-تركية/?page=" to "Turkish Movies",
-    "$mainUrl/category/افلام-كرتون/?page=" to "Cartoon Movies",
-    "$mainUrl/category/افلام-وثائقية/?page=" to "Documentary Movies",
-    "$mainUrl/category/افلام-هندية/?page=" to "Indian Movies",
-    "$mainUrl/category/افلام-عربي/?page=" to "Arabic Movies",
-
-    // Series Section (مسلسلات)
-    "$mainUrl/season/?page=" to "Series", // General series page
-    "$mainUrl/category/مسلسلات-اجنبي-مدبلجة/?page=" to "Dubbed Foreign Series",
-    "$mainUrl/category/مسلسلات-تركية-مدبلجة/?page=" to "Dubbed Turkish Series",
-    "$mainUrl/category/مسلسلات-اسيوية/?page=" to "Asian Series",
-    "$mainUrl/category/مسلسلات-لاتينية-مدبلجة/?page=" to "Dubbed Latin Series",
-    "$mainUrl/category/مسلسلات-كرتون-مدبلجة/?page=" to "Dubbed Cartoon Series",
-    "$mainUrl/category/مسلسلات-عربي/?page=" to "Arabic Series",
-    "$mainUrl/category/مسلسلات-انمي/?page=" to "Anime Series",
-    "$mainUrl/category/مسلسلات-انمي-مدبلجة/?page=" to "Dubbed Anime Series",
-
-    // Other Content Types
-    "$mainUrl/category/برامج-تلفزيونية/?page=" to "TV Shows",
-    "$mainUrl/category/ستاند-اب-وحفلات/?page=" to "Stand-up & Concerts",
-    "$mainUrl/category/كاس-العالم-2022/?page=" to "World Cup 2022",
+        // Movies Categories (افلام)
+    "https://egydead.skin/category/افلام-اجنبي-اونلاين/" to "Foreign Movies",
+    "https://egydead.skin/category/افلام-كرتون/" to "Cartoon Movies", 
+    "https://egydead.skin/category/افلام-اسيوية/" to "Asian Movies",
+    "https://egydead.skin/category/افلام-تركية/" to "Turkish Movies",
+    "https://egydead.skin/category/افلام-وثائقية/" to "Documentary Movies",
+    "https://egydead.skin/category/افلام-اجنبية-مدبلجة/" to "Dubbed Foreign Movies",
+    "https://egydead.skin/category/افلام-هندية/" to "Indian Movies",
+    "https://egydead.skin/category/افلام-عربي/" to "Arabic Movies",
+    "https://egydead.skin/category/افلام-انمي/" to "Anime Movies",
     
-    // Special Pages (if they are separate sections)
-    "$mainUrl/المسلسلات-الكاملة/?page=" to "Complete Series",
-    "$mainUrl/المواسم-الكاملة/?page=" to "Full Seasons",
-    "$mainUrl/الحلقات/?page=" to "Episodes"
+    // Special Movie Sections
+    "https://tv1.egydead.live/assembly/" to "Movie Series",
+    "https://egydead.skin/category/ترجمات-اسلام-الجيزاوي/" to "Islam El-Gizawy Translations",
+    "https://egydead.skin/category/افلام-كرتون/افلام-كرتون-ديزني-باللهجة-المصرية/" to "Disney Cartoons in Egyptian Dialect",
+
+    // Series Categories (مسلسلات)
+    "https://egydead.skin/series-category/مسلسلات-اجنبي-1/" to "Foreign Series",
+    "https://egydead.skin/series-category/مسلسلات-كرتون/" to "Cartoon Series",
+    "https://egydead.skin/series-category/مسلسلات-اسيوية/" to "Asian Series", 
+    "https://egydead.skin/series-category/مسلسلات-تركية-ا/" to "Turkish Series",
+    "https://egydead.skin/series-category/مسلسلات-لاتينية/" to "Latin Series",
+    "https://egydead.skin/series-category/مسلسلات-وثائقية/" to "Documentary Series",
+    "https://egydead.skin/series-category/مسلسلات-عربي/" to "Arabic Series",
+    "https://egydead.skin/series-category/مسلسلات-افريقية/" to "African Series",
+
+    // Anime Categories (انمي)
+    "https://egydead.skin/series-category/مسلسلات-انمي/" to "Anime Series",
+    "https://egydead.skin/series-category/مسلسلات-انمي-مدبلجة/" to "Dubbed Anime Series",
+    "https://egydead.skin/series-category/افلام-انمي/" to "Anime Movies",
+    "https://egydead.skin/series-category/انميات-صينية/" to "Chinese Anime",
+    "https://egydead.skin/series-category/انميات-كورية/" to "Korean Anime",
+    
+    // Seasonal Anime Tags
+    "https://egydead.skin/tag/انميات-خريف-2025/" to "Fall 2025 Anime",
+    "https://egydead.skin/tag/انميات-صيف-2025/" to "Summer 2025 Anime",
+
+    // Dubbed Series (المدبلج)
+    "https://egydead.skin/series-category/مسلسلات-اجنبي-مدبلجة/" to "Dubbed Foreign Series", 
+    "https://egydead.skin/series-category/مسلسلات-تركية-مدبلجة/" to "Dubbed Turkish Series",
+    "https://egydead.skin/series-category/مسلسلات-كرتون-مدبلجة/" to "Dubbed Cartoon Series",
+    "https://egydead.skin/series-category/مسلسلات-لاتينية-مدبلجة/" to "Dubbed Latin Series",
+
+    // Miscellaneous Content
+    "https://egydead.skin/category/رياضة/" to "Sports",
+    "https://egydead.skin/series-category/برامج-تلفزيونية-1/" to "TV Programs",
+    "https://egydead.skin/category/عروض-وحفلات/" to "Stand-up Shows & Concerts",
+    "https://egydead.skin/tag/كاس-العالم-2022/" to "World Cup 2022",
+
+    // Series Structure Pages
+    "https://tv1.egydead.live/serie/" to "Complete Series",
+    "https://tv1.egydead.live/season/" to "Full Seasons", 
+    "https://tv1.egydead.live/episode/" to "Episodes"
     )
 
     // ✅ SAFE - getMainPage
@@ -104,7 +128,7 @@ class EgyDead : MainAPI() {
         val year = doc.select("ul > li:contains(السنه) > a").text().getIntFromText()
         val tags = doc.select("ul > li:contains(النوع) > a").map { it.text() }
         val recommendations = doc.select("div.related-posts > ul > li").mapNotNull { element ->
-            element.toSearchResponse()
+            Episodes.toSearchResponse()
         }
         val youtubeTrailer = doc.select("div.popupContent > iframe").attr("src")
         
@@ -125,7 +149,7 @@ class EgyDead : MainAPI() {
                 seasonList.forEachIndexed { index, season ->
                     val seasonDoc = app.get(season.attr("href")).document
                     seasonDoc.select("div.EpsList > li > a").forEach {
-                        episodes.add(newEpisode(it.attr("href")) {
+                        episodes.addnewEpisodee(it.attr("href")) {
                             name = it.attr("title")
                             this.season = index + 1
                             episode = it.text().getIntFromText() ?: 1
