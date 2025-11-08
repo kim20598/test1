@@ -26,7 +26,6 @@ class Fushaar : MainAPI() {
         val posterUrl = select("img").attr("src")
         val href = select("a").attr("href")
         
-        // Use newMovieSearchResponse instead of deprecated constructor
         return newMovieSearchResponse(title, href, TvType.Movie) {
             this.posterUrl = posterUrl
         }
@@ -49,7 +48,6 @@ class Fushaar : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         if (query.length < 3) return emptyList()
-        // Remove encodeUrl - use simple string concatenation
         val doc = app.get("$mainUrl/?s=$query").document
         return doc.select("article").mapNotNull {
             it.toSearchResponse()
@@ -64,10 +62,8 @@ class Fushaar : MainAPI() {
         
         val posterUrl = doc.selectFirst("img")?.attr("src") ?: ""
         
-        // Use score instead of deprecated rating
-        val score = doc.selectFirst(".rating")?.text()?.getIntFromText()?.let {
-            Rating(it.toDouble())
-        }
+        // Get score as Int? instead of Rating object
+        val score = doc.selectFirst(".rating")?.text()?.getIntFromText()
         
         val synopsis = doc.selectFirst(".entry-content")?.text() ?: ""
         val year = doc.selectFirst(".year")?.text()?.getIntFromText()
@@ -79,13 +75,13 @@ class Fushaar : MainAPI() {
                 this.posterUrl = posterUrl
                 this.plot = synopsis
                 this.tags = tags
-                this.rating = score
+                this.score = score
                 this.year = year
             }
         } else {
             val episodes = ArrayList<Episode>()
             
-            // Simple episode detection using newEpisode
+            // Simple episode detection
             doc.select("a[href*='episode']").forEach { episodeLink ->
                 episodes.add(
                     newEpisode(episodeLink.attr("href")) {
@@ -100,7 +96,7 @@ class Fushaar : MainAPI() {
                 this.posterUrl = posterUrl
                 this.tags = tags
                 this.plot = synopsis
-                this.rating = score
+                this.score = score
                 this.year = year
             }
         }
@@ -117,8 +113,8 @@ class Fushaar : MainAPI() {
         try {
             val doc = app.get(data).document
             
-            // Method 1: Direct video links
-            doc.select("a[href*='.mp4'], a[href*='.m3u8']").apmap { link ->
+            // Method 1: Direct video links - use forEach instead of apmap
+            doc.select("a[href*='.mp4'], a[href*='.m3u8']").forEach { link ->
                 val url = link.attr("href")
                 if (url.isNotBlank()) {
                     foundLinks = true
@@ -126,8 +122,8 @@ class Fushaar : MainAPI() {
                 }
             }
             
-            // Method 2: Iframe embeds
-            doc.select("iframe").apmap { iframe ->
+            // Method 2: Iframe embeds - use forEach instead of apmap
+            doc.select("iframe").forEach { iframe ->
                 val src = iframe.attr("src")
                 if (src.isNotBlank()) {
                     foundLinks = true
