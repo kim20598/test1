@@ -45,12 +45,29 @@ class Fushaar : MainAPI() {
 
     // Fushaar categories
     override val mainPage = mainPageOf(
-        "$mainUrl" to "الأفلام والمسلسلات",
-        "$mainUrl/gerne/action/" to "أفلام الأكشن",
-        "$mainUrl/gerne/comedy/" to "أفلام الكوميديا", 
-        "$mainUrl/gerne/drama/" to "أفلام الدراما",
-        "$mainUrl/gerne/horror/" to "أفلام الرعب",
-        "$mainUrl/gerne/thriller/" to "أفلام الإثارة"
+        "$mainUrl/page/" to "Movies | أفلام",
+        "$mainUrl/gerne/action/page/" to "Action | أكشن",
+        "$mainUrl/gerne/adventure/page/" to "Adventure | مغامرة",
+        "$mainUrl/gerne/animation/page/" to "Animation | أنيمايشن",
+        "$mainUrl/gerne/biography/page/" to "Biography | سيرة",
+        "$mainUrl/gerne/comedy/page/" to "Comedy | كوميديا",
+        "$mainUrl/gerne/crime/page/" to "Crime | جريمة",
+        "$mainUrl/gerne/documentary/page/" to "Documentary | وثائقي",
+        "$mainUrl/gerne/drama/page/" to "Drama | دراما",
+        "$mainUrl/gerne/family/page/"	to "Family | عائلي",
+        "$mainUrl/gerne/fantasy/page/"	to "Fantasy | فنتازيا",
+        "$mainUrl/gerne/herror/page/" to "Herror | رعب",
+        "$mainUrl/gerne/history/page/" to "History | تاريخي",
+        "$mainUrl/gerne/music/page/" to "Music | موسيقى",
+        "$mainUrl/gerne/musical/page/" to "Musical | موسيقي",
+        "$mainUrl/gerne/mystery/page/" to "Mystery | غموض",
+        "$mainUrl/gerne/romance/page/" to "Romance | رومنسي",
+        "$mainUrl/gerne/sci-fi/page/" to "Sci-fi | خيال علمي",
+        "$mainUrl/gerne/short/page/" to "Short | قصير",
+        "$mainUrl/gerne/sport/page/" to "Sport | رياضة",
+        "$mainUrl/gerne/thriller/page/" to "Thriller | إثارة",
+        "$mainUrl/gerne/war/page/" to "War | حرب",
+        "$mainUrl/gerne/western/page/" to "Western | غربي",
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
