@@ -26,10 +26,8 @@ class Fushaar : MainAPI() {
     private fun Element.toSearchResponse(): SearchResponse {
         val title = select("h3").text().cleanTitle()
         
-        // Fushaar uses lazy loading with data-lazy-src
-        val posterUrl = select("img").attr("data-lazy-src").ifBlank { 
-            select("img").attr("src") 
-        }
+        // FIXED: Only use data-lazy-src for posters (no fallback to src)
+        val posterUrl = select("img").attr("data-lazy-src")
         
         val href = select("a").attr("href")
         
@@ -73,16 +71,14 @@ class Fushaar : MainAPI() {
         
         val title = doc.selectFirst("h1.entry-title, h1")?.text()?.cleanTitle() ?: "Unknown Title"
 
-        // Get proper poster with lazy loading support
-      //  val posterUrl = doc.selectFirst("img[data-lazy-src]")?.attr("data-lazy-src") ?: 
-                   //    doc.selectFirst("img")?.attr("src") ?: ""
+        // FIXED: Only use data-lazy-src for movie poster (no fallback)
+        val posterUrl = doc.selectFirst("img[data-lazy-src]")?.attr("data-lazy-src") ?: ""
         
         val synopsis = doc.selectFirst(".entry-content, .post-content")?.text() ?: ""
         val year = doc.selectFirst(".year, .labels .year")?.text()?.getIntFromText()
         
         val tags = doc.select(".gerne a, .genre a").map { it.text() }
         
-        // FIXED: Remove problematic rating code completely
         val recommendations = doc.select(".related-posts article, .simple-related-posts article").mapNotNull { element ->
             element.toSearchResponse()
         }
