@@ -24,10 +24,9 @@ class Fushaar : MainAPI() {
     }
 
     private fun Element.toSearchResponse(): SearchResponse {
-        // REAL FUSHAAR SELECTORS from the HTML
         val title = select("h3").text().cleanTitle()
         
-        // REAL: Fushaar uses lazy loading with data-lazy-src
+        // Fushaar uses lazy loading with data-lazy-src
         val posterUrl = select("img").attr("data-lazy-src").ifBlank { 
             select("img").attr("src") 
         }
@@ -39,25 +38,21 @@ class Fushaar : MainAPI() {
         }
     }
 
-    // REAL FUSHAAR CATEGORIES from the site structure
+    // Fushaar categories
     override val mainPage = mainPageOf(
         "$mainUrl" to "الأفلام والمسلسلات",
         "$mainUrl/gerne/action/" to "أفلام الأكشن",
         "$mainUrl/gerne/comedy/" to "أفلام الكوميديا", 
         "$mainUrl/gerne/drama/" to "أفلام الدراما",
         "$mainUrl/gerne/horror/" to "أفلام الرعب",
-        "$mainUrl/gerne/thriller/" to "أفلام الإثارة",
-        "$mainUrl/gerne/sci-fi/" to "أفلام الخيال العلمي",
-        "$mainUrl/gerne/adventure/" to "أفلام المغامرة",
-        "$mainUrl/gerne/fantasy/" to "أفلام الفانتازيا"
+        "$mainUrl/gerne/thriller/" to "أفلام الإثارة"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val url = if (page > 1) "${request.data}page/$page/" else request.data
         val document = app.get(url).document
         
-        // REAL: Fushaar uses article.poster for movie items
-        val home = document.select("article.poster").mapNotNull {
+        val home = document.select("article.poster, article").mapNotNull {
             it.toSearchResponse()
         }
         return newHomePageResponse(request.name, home)
@@ -68,7 +63,7 @@ class Fushaar : MainAPI() {
         val encodedQuery = URLEncoder.encode(query, "UTF-8")
         val doc = app.get("$mainUrl/?s=$encodedQuery").document
         
-        return doc.select("article.poster").mapNotNull {
+        return doc.select("article.poster, article").mapNotNull {
             it.toSearchResponse()
         }
     }
@@ -76,27 +71,23 @@ class Fushaar : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val doc = app.get(url).document
         
-        // REAL FUSHAAR TITLE SELECTOR
         val title = doc.selectFirst("h1.entry-title, h1")?.text()?.cleanTitle() ?: "Unknown Title"
 
-        // REAL: Fushaar movie details - get poster from data-lazy-src
+        // Get proper poster with lazy loading support
         val posterUrl = doc.selectFirst("img[data-lazy-src]")?.attr("data-lazy-src") ?: 
                        doc.selectFirst("img")?.attr("src") ?: ""
         
-        // REAL FUSHAAR DESCRIPTION
         val synopsis = doc.selectFirst(".entry-content, .post-content")?.text() ?: ""
-        
-        // REAL FUSHAAR METADATA
         val year = doc.selectFirst(".year, .labels .year")?.text()?.getIntFromText()
         
-        // REAL: Fushaar genres are in .gerne class
         val tags = doc.select(".gerne a, .genre a").map { it.text() }
         
-        // REAL: Fushaar rating from .greyinfo
+        // FIXED: Proper Score object creation
         val ratingText = doc.selectFirst(".greyinfo")?.text()?.replace("imdb", "")?.trim()
-        val score = ratingText?.toDoubleOrNull()?.times(10)?.toInt()
+        val score = ratingText?.toDoubleOrNull()?.let { rating ->
+            Rating(rating) // Create Rating object from Double
+        }
         
-        // REAL: Fushaar recommendations
         val recommendations = doc.select(".related-posts article, .simple-related-posts article").mapNotNull { element ->
             element.toSearchResponse()
         }
@@ -108,7 +99,7 @@ class Fushaar : MainAPI() {
             this.recommendations = recommendations
             this.plot = synopsis
             this.tags = tags
-            this.score = score
+            this.rating = score // Use rating instead of score
             this.year = year
             addTrailer(youtubeTrailer)
         }
@@ -125,41 +116,32 @@ class Fushaar : MainAPI() {
         try {
             val doc = app.get(data).document
             
-            // REAL FUSHAAR VIDEO LINKS
-            doc.select("a[href*='.mp4'], a[href*='.m3u8'], a[href*='download']").forEach { element ->
+            // Try direct video links first
+            doc.select("a[href*='.mp4'], a[href*='.m3u8']").forEach { element ->
                 val url = element.attr("href")
-                if (url.isNotBlank() && url.contains("http")) {
+                if (url.isNotBlank()) {
                     foundLinks = true
                     loadExtractor(url, data, subtitleCallback, callback)
                 }
             }
             
-            // REAL: Fushaar iframe players
+            // Try iframe embeds
             doc.select("iframe").forEach { iframe ->
                 val src = iframe.attr("src")
-                if (src.isNotBlank() && src.contains("http")) {
+                if (src.isNotBlank()) {
                     foundLinks = true
                     loadExtractor(src, data, subtitleCallback, callback)
                 }
             }
             
-            // REAL: Fushaar download servers
-            doc.select(".server-list a, [class*='server'] a").forEach { server ->
-                val url = server.attr("href")
-                if (url.isNotBlank() && url.contains("http")) {
-                    foundLinks = true
-                    loadExtractor(url, data, subtitleCallback, callback)
-                }
-            }
-            
-            // Try POST request as fallback
+            // If no links found, try POST request
             if (!foundLinks) {
                 try {
                     val postDoc = app.post(data, data = mapOf("view" to "1")).document
                     
-                    postDoc.select("a[href*='.mp4'], a[href*='.m3u8'], iframe").forEach { element ->
-                        val url = if (element.tagName() == "iframe") element.attr("src") else element.attr("href")
-                        if (url.isNotBlank() && url.contains("http")) {
+                    postDoc.select("a[href*='.mp4'], a[href*='.m3u8']").forEach { element ->
+                        val url = element.attr("href")
+                        if (url.isNotBlank()) {
                             foundLinks = true
                             loadExtractor(url, data, subtitleCallback, callback)
                         }
