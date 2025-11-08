@@ -74,8 +74,8 @@ class Fushaar : MainAPI() {
         val title = doc.selectFirst("h1.entry-title, h1")?.text()?.cleanTitle() ?: "Unknown Title"
 
         // Get proper poster with lazy loading support
-        val posterUrl = doc.selectFirst("img[data-lazy-src]")?.attr("data-lazy-src") ?: 
-                       doc.selectFirst("img")?.attr("src") ?: ""
+      //  val posterUrl = doc.selectFirst("img[data-lazy-src]")?.attr("data-lazy-src") ?: 
+                   //    doc.selectFirst("img")?.attr("src") ?: ""
         
         val synopsis = doc.selectFirst(".entry-content, .post-content")?.text() ?: ""
         val year = doc.selectFirst(".year, .labels .year")?.text()?.getIntFromText()
