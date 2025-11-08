@@ -12,7 +12,7 @@ class Fushaar : MainAPI() {
     override var lang = "ar"
     override var mainUrl = "https://fushaar.com"
     override var name = "Fushaar"
-    override val usesWebView = false
+    override val usesWebView = true
     override val hasMainPage = true
     override val supportedTypes = setOf(TvType.TvSeries, TvType.Movie, TvType.Anime)
 
