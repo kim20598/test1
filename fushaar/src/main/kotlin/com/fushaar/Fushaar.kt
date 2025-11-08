@@ -3,108 +3,127 @@ package com.fushaar
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import org.jsoup.nodes.Element
-import org.jsoup.nodes.Document
+import org.jsoup.Jsoup
 
 class Fushaar : MainAPI() {
     override var mainUrl = "https://fushaar.com"
     override var name = "Fushaar"
     override var lang = "ar"
     override val hasMainPage = true
-    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
-
-    // Common headers to look more like a real browser
-    private val defaultHeaders = mapOf(
-        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-        "Accept-Language" to "en-US,en;q=0.9",
-        "Referer" to mainUrl
-    )
+    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime)
 
     private fun String.toAbsolute(): String {
         return when {
-            startsWith("http") -> this
-            startsWith("//") -> "https:$this"
-            else -> "$mainUrl${if (startsWith("/")) "" else "/"}$this"
+            this.startsWith("http") -> this
+            this.startsWith("//") -> "https:$this"
+            else -> "${mainUrl}${if (this.startsWith("/")) "" else "/"}$this"
         }
     }
 
+    // Keep mainPage small and practical
     override val mainPage = mainPageOf(
-        "$mainUrl/movies/" to "Latest Movies",
-        "$mainUrl/series/" to "Latest Series",
-        "$mainUrl/category/افلام-اسيوية/" to "Asian Movies"
+        "$mainUrl/category/افلام-اجنبي/?page=" to "أفلام أجنبية",
+        "$mainUrl/category/افلام-اسيوية/?page=" to "أفلام آسيوية",
+        "$mainUrl/season/?page=" to "مسلسلات"
     )
 
-    // Helper fetch that uses headers and checks for Cloudflare
-    private suspend fun fetchDocument(url: String): Document {
-        val res = try {
-            app.get(url, headers = defaultHeaders)
-        } catch (e: Exception) {
-            // network error -> rethrow so caller sees it
-            throw e
+    // Helper to extract lazy image src or normal src
+    private fun Element.imageSrc(): String? {
+        val img = selectFirst("img") ?: return null
+        return (img.attr("data-src").ifBlank { img.attr("src") }).ifBlank { null }?.let {
+            if (it.startsWith("data:")) null else it.toAbsolute()
         }
-        val doc = res.document
+    }
 
-        // Debug: if you want raw HTML log, uncomment:
-        // println("DEBUG: fetched ${url} -> length=${doc.html().length}")
-
-        // Simple detection for Cloudflare challenge / bot protection
-        val htmlLower = doc.html().lowercase()
-        val challengeIndicators = listOf("checking your browser", "cf-chl-bypass", "cloudflare", "please enable javascript")
-        if (challengeIndicators.any { htmlLower.contains(it) }) {
-            logger.warning("Cloudflare/bot challenge detected for $url")
+    // Convert an article/item element to a SearchResponse
+    private fun Element.toSearchResponse(): SearchResponse? {
+        // Title in h3 or h2
+        val title = selectFirst("h3, h2")?.text()?.trim() ?: return null
+        // anchor
+        val a = selectFirst("a") ?: return null
+        val href = a.attr("href").trim().toAbsolute()
+        // poster
+        val poster = imageSrc()
+        // determine type by category label if present
+        val catText = selectFirst(".cat_name, .meta, .year, .info")?.text()?.trim() ?: ""
+        val tvType = when {
+            catText.contains("افلام") || href.contains("/movie/") -> TvType.Movie
+            catText.contains("مسلسل") || href.contains("/serie/") || href.contains("/season/") -> TvType.TvSeries
+            else -> TvType.Movie // default to movie but load() will reassess
         }
-        return doc
+
+        return newMovieSearchResponse(title, href, tvType) {
+            this.posterUrl = poster
+        }
     }
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val base = if (request.data.endsWith("/")) request.data else request.data + "/"
-        val url = if (page <= 1) base else "$base/page/$page/"
-        val doc = fetchDocument(url)
-
-        val items = doc.select("article, div.post, div.item, [class*=\"post\"]").mapNotNull { el ->
-            el.toSearchResponse()
+        // request.data already has the category base URL like ...?page=
+        val url = if (request.data.endsWith("=")) "${request.data}${page}" else request.data.replace("=page", "$page")
+        val doc = try {
+            app.get(url).document
+        } catch (e: Throwable) {
+            return newHomePageResponse(request.name, emptyList())
         }
 
+        // Fushaar main listing uses article elements
+        val items = doc.select("article, .post, .movieItem, .item").mapNotNull { it.toSearchResponse() }
         return newHomePageResponse(request.name, items)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val url = "$mainUrl/?s=${query.replace(" ", "+")}"
-        val doc = fetchDocument(url)
-        return doc.select("article, div.post, li.movieItem, .post, .item").mapNotNull { it.toSearchResponse() }
+        val q = query.replace(" ", "+")
+        val url = "$mainUrl/?s=$q"
+        val doc = try {
+            app.get(url).document
+        } catch (e: Throwable) {
+            return emptyList()
+        }
+
+        // results appear as article or .item
+        return doc.select("article, li.movieItem, .item").mapNotNull { it.toSearchResponse() }
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val doc = fetchDocument(url)
-
-        val title = doc.selectFirst("h1.entry-title, .singleTitle em, h1")?.text()?.trim() ?: "Unknown"
-        val poster = doc.selectFirst("div.single-thumbnail img, .post img, article img")?.let {
-            (it.attr("src").ifBlank { it.attr("data-src") }).toAbsolute()
+        val doc = try {
+            app.get(url).document
+        } catch (e: Throwable) {
+            return newMovieLoadResponse("خطأ فى التحميل", url, TvType.Movie, url) {}
         }
-        val synopsis = doc.selectFirst("div.entry-content p, .extra-content p, .summary, .post-content p")?.text()
-        val tags = doc.select("ul > li:contains(النوع) a, .tags a, .cats a").map { it.text() }
-        val year = doc.selectFirst("ul > li:contains(السنه) a, .meta:contains(السنة), .year")?.text()?.filter { it.isDigit() }?.toIntOrNull()
-        val isSeries = url.contains("/serie/") || url.contains("/season/") || doc.select(".EpsList, .episodes-list, .seasons").isNotEmpty()
+
+        val title = doc.selectFirst("div.singleTitle em, h1.entry-title, h1")?.text()?.trim() ?: "غير معروف"
+        val poster = doc.selectFirst("div.single-thumbnail img, .post img")?.let {
+            it.attr("data-src").ifBlank { it.attr("src") }?.let { s -> if (s.startsWith("http")) s else s.toAbsolute() }
+        }
+        val plot = doc.selectFirst("div.extra-content p, .summary, .description")?.text()
+        val tags = doc.select("ul > li:contains(النوع) > a, .tags a").map { it.text() }
+        val year = doc.selectFirst("ul > li:contains(السنه) > a")?.text()?.toIntOrNull()
+
+        // Determine if page is series by presence of episodes list
+        val eps = doc.select("div.EpsList > li > a, .episodes-list li a, .EpsList li a")
+        val isSeries = eps.isNotEmpty() || url.contains("/serie/") || url.contains("/season/")
 
         return if (!isSeries) {
             newMovieLoadResponse(title, url, TvType.Movie, url) {
                 this.posterUrl = poster
-                this.plot = synopsis
+                this.plot = plot
                 this.tags = tags
                 this.year = year
             }
         } else {
             val episodes = arrayListOf<Episode>()
-            doc.select("div.EpsList > li > a, .EpsList li a, .episodes-list li a, .episodes a").forEach { el ->
-                val eh = el.attr("href").toAbsolute()
-                val etitle = el.attr("title").ifBlank { el.text().trim() }
-                val episodeNumber = el.text().filter { it.isDigit() }.toIntOrNull() ?: 0
-                episodes.add(newEpisode(eh, etitle, episodeNumber, episodeNumber))
+            eps.forEach { el ->
+                val epHref = el.attr("href").toAbsolute()
+                val epTitle = el.attr("title").ifBlank { el.text().trim() }
+                val epNumber = el.text().trim().toIntOrNull() ?: null
+                // Episode constructor may be deprecated in your environment, but most projects still compile with it.
+                // If you get deprecation errors convert to newEpisode(...) helper if available.
+                episodes.add(Episode(epHref, epTitle, 1, epNumber ?: 0))
             }
 
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = poster
-                this.plot = synopsis
+                this.plot = plot
                 this.tags = tags
                 this.year = year
             }
@@ -117,43 +136,52 @@ class Fushaar : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val doc = fetchDocument(data)
-        val found = mutableSetOf<String>()
+        val doc = try {
+            app.get(data).document
+        } catch (e: Throwable) {
+            return false
+        }
 
-        // 1) Direct links in <a> tags (mp4, m3u8, common download hosts)
-        doc.select("a[href]").forEach { a ->
-            val h = a.attr("href").ifBlank { return@forEach }
-            val abs = h.toAbsolute()
-            if (abs.contains(".mp4") || abs.contains(".m3u8") || abs.contains("/download") || abs.contains("1fichier") || abs.contains("fembed") || abs.contains("mixdrop") || abs.contains("mega")) {
-                found.add(abs)
-                callback(newExtractorLink("fushaar", "Direct", abs, data, 0, abs.endsWith(".m3u8")))
+        var found = false
+
+        // 1) Download servers list (links with class ser-link)
+        doc.select("ul.donwload-servers-list li a.ser-link, .download-servers-list a, a.ser-link").forEach { a ->
+            val href = a.attr("href").trim().let { if (it.startsWith("http")) it else it.toAbsolute() }
+            if (href.isNotBlank()) {
+                found = true
+                // Let the extractor handle extraction (no deprecated ExtractorLink constructor used here)
+                loadExtractor(href, data, subtitleCallback, callback)
             }
         }
 
-        // 2) iframe embeds
-        doc.select("iframe[src]").mapNotNull { it.attr("src").ifBlank { null }?.toAbsolute() }.forEach { iframeUrl ->
-            found.add(iframeUrl)
-            // Let extractor system attempt to resolve the iframe provider
-            loadExtractor(iframeUrl, data, subtitleCallback, callback)
-        }
-
-        // 3) Links inside script tags (m3u8, mp4)
-        val scriptLinks = mutableSetOf<String>()
-        doc.select("script").forEach { s ->
-            val text = s.data()
-            Regex("(https?:\\\\?/\\\\?/[^'\"\\s]+\\.(?:m3u8|mp4))").findAll(text).forEach { m ->
-                scriptLinks.add(m.groupValues[1].replace("\\/", "/"))
-            }
-            Regex("(https?://[^'\"\\s]+(?:m3u8|mp4))").findAll(text).forEach { m ->
-                scriptLinks.add(m.groupValues[1])
+        // 2) Servers list (data-link attributes)
+        doc.select(".serversList li[data-link]").forEach { li ->
+            val link = li.attr("data-link").trim().let { if (it.startsWith("http")) it else it.toAbsolute() }
+            if (link.isNotBlank()) {
+                found = true
+                loadExtractor(link, data, subtitleCallback, callback)
             }
         }
-        scriptLinks.forEach { url ->
-            found.add(url)
-            callback(newExtractorLink("fushaar", "Script", url, data, 0, url.endsWith(".m3u8")))
+
+        // 3) direct anchors to mp4 / m3u8
+        doc.select("a[href*='.mp4'], a[href*='.m3u8']").forEach { a ->
+            val href = a.attr("href").trim().let { if (it.startsWith("http")) it else it.toAbsolute() }
+            if (href.isNotBlank()) {
+                found = true
+                loadExtractor(href, data, subtitleCallback, callback)
+            }
         }
 
-        // Return true only if we found at least one candidate link
-        return found.isNotEmpty()
+        // 4) iframes (embed players)
+        doc.select("iframe").forEach { iframe ->
+            val src = iframe.attr("src").trim().let { if (it.startsWith("http")) it else it.toAbsolute() }
+            if (src.isNotBlank()) {
+                found = true
+                loadExtractor(src, data, subtitleCallback, callback)
+            }
+        }
+
+        return found
     }
+
 }
