@@ -1,12 +1,12 @@
-package com.akwam
+package com.fajrshow
 
 import android.content.Context
 import com.lagradost.cloudstream3.plugins.CloudstreamPlugin
 import com.lagradost.cloudstream3.plugins.Plugin
 
 @CloudstreamPlugin
-class AkwamProvider : Plugin() {
+class FajrshowProvider : Plugin() {
     override fun load(context: Context) {
-        registerMainAPI(Akwam())
+        registerMainAPI(Fajrshow())
     }
 }

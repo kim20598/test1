@@ -23,7 +23,7 @@ class Fushaar : MainAPI() {
         return this.replace("مشاهدة وتحميل فلم|مشاهدة وتحميل|اونلاين|مترجم".toRegex(), "").trim()
     }
 
-    // Store poster URLs when we find them in search/main page
+    // Store poster URLs when we find them in search/main page 
     private val posterCache = mutableMapOf<String, String>()
 
     private fun Element.toSearchResponse(): SearchResponse {

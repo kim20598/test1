@@ -1,11 +1,8 @@
 // use an integer for version numbers
-version = 4
-
+version = 1
 
 cloudstream {
     language = "ar"
-    // All of these properties are optional, you can safely remove them
-
     authors = listOf("kim20598")
 
     /**
@@ -18,10 +15,9 @@ cloudstream {
     status = 1 // will be 3 if unspecified
     tvTypes = listOf(
         "Movie",
-        "TvSeries"
     )
 
-    iconUrl = "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://egydead.skin&size=%size%"
+    iconUrl = "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://fajer.show&size=%size%"
 
     isCrossPlatform = true
 }
