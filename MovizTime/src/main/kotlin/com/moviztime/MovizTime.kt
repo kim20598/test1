@@ -10,7 +10,7 @@ class MovizTime : MainAPI() {
     override var name = "Moviz Time"
     override val usesWebView = false
     override val hasMainPage = true
-    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
+    override val supportedTypes = setOf(TvType.Movie)
 
     override val mainPage = mainPageOf(
         "$mainUrl" to "الأفلام المضافة حديثاً",
@@ -39,18 +39,9 @@ class MovizTime : MainAPI() {
             val href = element.select("a").attr("href")
             val poster = element.select("img").attr("src")
             
-            // Determine type from URL
-            val isSeries = href.contains("/anime/") || href.contains("/series/") || title.contains("موسم")
-            
             if (title.isNotBlank() && href.isNotBlank()) {
-                if (isSeries) {
-                    newTvSeriesSearchResponse(title, href) {
-                        this.posterUrl = poster
-                    }
-                } else {
-                    newMovieSearchResponse(title, href, TvType.Movie) {
-                        this.posterUrl = poster
-                    }
+                newMovieSearchResponse(title, href, TvType.Movie) {
+                    this.posterUrl = poster
                 }
             } else null
         }
@@ -65,17 +56,9 @@ class MovizTime : MainAPI() {
             val href = element.select("a").attr("href")
             val poster = element.select("img").attr("src")
             
-            val isSeries = href.contains("/anime/") || href.contains("/series/")
-            
             if (title.isNotBlank() && href.isNotBlank()) {
-                if (isSeries) {
-                    newTvSeriesSearchResponse(title, href) {
-                        this.posterUrl = poster
-                    }
-                } else {
-                    newMovieSearchResponse(title, href, TvType.Movie) {
-                        this.posterUrl = poster
-                    }
+                newMovieSearchResponse(title, href, TvType.Movie) {
+                    this.posterUrl = poster
                 }
             } else null
         }
@@ -88,19 +71,9 @@ class MovizTime : MainAPI() {
         val poster = document.selectFirst("img")?.attr("src") ?: ""
         val description = document.selectFirst(".content, .entry-content")?.text() ?: ""
         
-        // Check if it's a series
-        val isSeries = url.contains("/anime/") || url.contains("/series/") || title.contains("موسم")
-        
-        return if (isSeries) {
-            newTvSeriesLoadResponse(title, url, TvType.TvSeries) {
-                this.posterUrl = poster
-                this.plot = description
-            }
-        } else {
-            newMovieLoadResponse(title, url, TvType.Movie, url) {
-                this.posterUrl = poster
-                this.plot = description
-            }
+        return newMovieLoadResponse(title, url, TvType.Movie, url) {
+            this.posterUrl = poster
+            this.plot = description
         }
     }
 
