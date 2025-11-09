@@ -27,13 +27,11 @@ class MovizTime : MainAPI() {
         return this.replace("مشاهدة وتحميل|اونلاين|مترجم|برابط مباشر".toRegex(), "").trim()
     }
 
-    // Store poster URLs when we find them in search/main page
     private val posterCache = mutableMapOf<String, String>()
 
     private fun Element.toSearchResponse(): SearchResponse {
         val title = select("h2, h3, .title, .entry-title").text().cleanTitle()
         
-        // Get the poster from various possible attributes
         val posterUrl = select("img").attr("data-lazy-src").ifBlank {
             select("img").attr("data-src").ifBlank {
                 select("img").attr("src")
@@ -41,12 +39,10 @@ class MovizTime : MainAPI() {
         }
         val href = select("a").attr("href")
         
-        // Store the poster URL for later use in load()
         if (posterUrl.isNotBlank()) {
             posterCache[href] = posterUrl
         }
         
-        // Determine content type
         val isSeries = href.contains("/series/") || 
                        href.contains("/مسلسل/") || 
                        title.contains("حلقة") || 
@@ -76,7 +72,6 @@ class MovizTime : MainAPI() {
         }
     }
 
-    // Moviz Time categories
     override val mainPage = mainPageOf(
         "$mainUrl" to "الأفلام المضافة حديثاً",
         "$mainUrl/category/افلام-عربي/" to "أفلام عربي",
@@ -111,22 +106,16 @@ class MovizTime : MainAPI() {
         val doc = app.get(url).document
         
         val title = doc.selectFirst("h1, .entry-title")?.text()?.cleanTitle() ?: "Unknown Title"
-
-        // Use the cached poster from main page or try to extract from movie page
         val posterUrl = posterCache[url] ?: doc.selectFirst(".poster img, .cover img, .wp-post-image")?.attr("src") ?: ""
-        
         val synopsis = doc.selectFirst(".content, .entry-content, .description, .plot")?.text() ?: ""
         val year = doc.selectFirst(".year, .date")?.text()?.getIntFromText()
-        
         val tags = doc.select(".genre a, .category a, .tags a").map { it.text() }
-        
         val recommendations = doc.select(".related-posts article, .related article").mapNotNull { element ->
             element.toSearchResponse()
         }
-        
         val youtubeTrailer = doc.selectFirst("iframe[src*='youtube'], iframe[src*='youtu.be']")?.attr("src") ?: ""
         
-        // Check for series episodes - FIXED: Use newEpisode method
+        // FIXED: Use newEpisode with proper parameters
         val episodes = doc.select(".episode, .episodes-list a, .episode-item").mapNotNull { episodeElement ->
             val epTitle = episodeElement.selectFirst(".title, h3, h4")?.text()?.trim() ?: "Episode"
             val epUrl = episodeElement.attr("href")
@@ -140,7 +129,6 @@ class MovizTime : MainAPI() {
             } else null
         }
 
-        // Determine if it's a series
         val hasEpisodes = episodes.isNotEmpty() || 
                          doc.select(".season, .episodes, [class*='episode']").isNotEmpty() ||
                          url.contains("/series/") || 
@@ -193,59 +181,33 @@ class MovizTime : MainAPI() {
     ): Boolean {
         var foundLinks = false
         
-        try {
-            val doc = app.get(data).document
-            
-            // Try direct video links first
-            doc.select("a[href*='.mp4'], a[href*='.m3u8']").forEach { element ->
-                val url = element.attr("href")
-                if (url.isNotBlank()) {
-                    foundLinks = true
-                    loadExtractor(url, data, subtitleCallback, callback)
-                }
+        val doc = app.get(data).document
+        
+        // Try direct video links first
+        doc.select("a[href*='.mp4'], a[href*='.m3u8']").forEach { element ->
+            val url = element.attr("href")
+            if (url.isNotBlank()) {
+                foundLinks = true
+                loadExtractor(url, data, subtitleCallback, callback)
             }
-            
-            // Try iframe embeds
-            doc.select("iframe").forEach { iframe ->
-                val src = iframe.attr("src")
-                if (src.isNotBlank()) {
-                    foundLinks = true
-                    loadExtractor(src, data, subtitleCallback, callback)
-                }
+        }
+        
+        // Try iframe embeds
+        doc.select("iframe").forEach { iframe ->
+            val src = iframe.attr("src")
+            if (src.isNotBlank()) {
+                foundLinks = true
+                loadExtractor(src, data, subtitleCallback, callback)
             }
-            
-            // Try video tags
-            doc.select("video source").forEach { source ->
-                val src = source.attr("src")
-                if (src.isNotBlank()) {
-                    foundLinks = true
-                    loadExtractor(src, data, subtitleCallback, callback)
-                }
+        }
+        
+        // Try video tags
+        doc.select("video source").forEach { source ->
+            val src = source.attr("src")
+            if (src.isNotBlank()) {
+                foundLinks = true
+                loadExtractor(src, data, subtitleCallback, callback)
             }
-            
-            // If no links found, try POST request with common parameters
-            if (!foundLinks) {
-                try {
-                    val postDoc = app.post(data, data = mapOf("view" to "1")).document
-                    
-                    postDoc.select("a[href*='.mp4'], a[href*='.m3u8'], iframe, video source").forEach { element ->
-                        val url = when (element.tagName()) {
-                            "iframe" -> element.attr("src")
-                            "source" -> element.attr("src")
-                            else -> element.attr("href")
-                        }
-                        if (url.isNotBlank()) {
-                            foundLinks = true
-                            loadExtractor(url, data, subtitleCallback, callback)
-                        }
-                    }
-                } catch (e: Exception) {
-                    // POST failed, continue
-                }
-            }
-            
-        } catch (e: Exception) {
-            // Fallback if everything fails
         }
         
         return foundLinks
