@@ -139,30 +139,26 @@ class MovizTime : MainAPI() {
                      title.contains("انمي") || 
                      title.contains("anime")
 
-        // FIXED: Use proper load response methods without boolean parameter
+        // FIXED: Use correct episode map structure
         return when {
             hasEpisodes && isAnime -> {
-                newAnimeLoadResponse(title, url, TvType.Anime) {
+                newAnimeLoadResponse(title, url, TvType.Anime, episodes.groupBy { DubStatus.Subbed }) {
                     this.posterUrl = posterUrl
                     this.plot = synopsis
                     this.year = year
                     this.tags = tags
                     this.recommendations = recommendations
                     addTrailer(youtubeTrailer)
-                    // Add episodes separately
-                    this.episodes = episodes
                 }
             }
             hasEpisodes -> {
-                newTvSeriesLoadResponse(title, url, TvType.TvSeries) {
+                newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes.groupBy { DubStatus.Subbed }) {
                     this.posterUrl = posterUrl
                     this.plot = synopsis
                     this.year = year
                     this.tags = tags
                     this.recommendations = recommendations
                     addTrailer(youtubeTrailer)
-                    // Add episodes separately
-                    this.episodes = episodes
                 }
             }
             else -> {
