@@ -1,16 +1,21 @@
-package com.moviztime
+package com.moviztimelive
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
 import org.jsoup.nodes.Element
 
-class MovizTime : MainAPI() {
+class MoviztimeProvider : MainAPI() {
     override var mainUrl = "https://moviz-time.live"
     override var name = "Moviz Time"
     override val usesWebView = false
     override val hasMainPage = true
     override val supportedTypes = setOf(TvType.Movie)
+
+    // Simple Cloudflare bypass
+    private val safeHeaders = mapOf(
+        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    )
 
     override val mainPage = mainPageOf(
         "$mainUrl" to "الأفلام المضافة حديثاً",
@@ -20,8 +25,7 @@ class MovizTime : MainAPI() {
         "$mainUrl/category/%d8%a3%d9%81%d9%84%d8%a7%d9%85-2022/" to "أفلام 2022",
         "$mainUrl/category/%d8%a3%d9%81%d9%84%d8%a7%d9%85-2021/" to "أفلام 2021",
         "$mainUrl/category/%d8%a3%d9%81%d9%84%d8%a7%d9%85-%d8%a3%d8%ac%d9%86%d8%a8%d9%8a%d8%a9/" to "أفلام أجنبية",
-        "$mainUrl/category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%a3%d8%ac%d9%86%d8%a8%d9%8a%d8%a9-%d9%85%d8%aa%d8%b1%d8%ac%d9%85%d8%a9-e/" to "مسلسلات أجنبية",
-        "$mainUrl/category/%d9%82%d8%a7%d8%a6%d9%85%d8%a9-%d8%a7%d9%84%d8%a3%d9%86%d9%85%d9%8a-b/%d8%a3%d9%81%d9%84%d8%a7%d9%85-%d8%a3%d9%86%d9%85%d9%8a/" to "أفلام أنمي"
+        "$mainUrl/category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%a3%d8%ac%d9%86%d8%a8%d9%8a%d8%a9-%d9%85%d8%aa%d8%b1%d8%ac%d9%85%d8%a9-e/" to "مسلسلات أجنبية"
     )
 
     override suspend fun getMainPage(
@@ -29,9 +33,10 @@ class MovizTime : MainAPI() {
         request: MainPageRequest
     ): HomePageResponse {
         val url = if (page > 1) "${request.data}page/$page/" else request.data
-        val document = app.get(url).document
+        val document = app.get(url, headers = safeHeaders).document
         
-        val home = document.select("article, .post").mapNotNull { element ->
+        // Use .series selector from analysis (found 24 items)
+        val home = document.select(".series, article").mapNotNull { element ->
             val title = element.select("h2, h3").text()
             val href = element.select("a").attr("href")
             val poster = element.select("img").attr("src")
@@ -46,9 +51,9 @@ class MovizTime : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val document = app.get("$mainUrl/?s=${query}").document
+        val document = app.get("$mainUrl/?s=$query", headers = safeHeaders).document
         
-        return document.select("article, .post").mapNotNull { element ->
+        return document.select(".series, article").mapNotNull { element ->
             val title = element.select("h2, h3").text()
             val href = element.select("a").attr("href")
             val poster = element.select("img").attr("src")
@@ -62,7 +67,7 @@ class MovizTime : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val document = app.get(url).document
+        val document = app.get(url, headers = safeHeaders).document
         
         val title = document.selectFirst("h1")?.text() ?: "Unknown"
         val poster = document.selectFirst("img")?.attr("src") ?: ""
@@ -82,8 +87,8 @@ class MovizTime : MainAPI() {
     ): Boolean {
         var foundLinks = false
         
-        // METHOD 1: Extract from main page iframe
-        val mainDoc = app.get(data).document
+        // METHOD 1: Extract iframes with headers
+        val mainDoc = app.get(data, headers = safeHeaders).document
         val iframes = mainDoc.select("iframe")
         
         iframes.forEach { iframe ->
@@ -94,17 +99,16 @@ class MovizTime : MainAPI() {
             }
         }
         
-        // METHOD 2: Try with GET parameters
+        // METHOD 2: Try with GET parameters that worked
         if (!foundLinks) {
             val workingParams = listOf(
                 mapOf("view" to "1"),
-                mapOf("load" to "video"), 
-                mapOf("play" to "1")
+                mapOf("load" to "video")
             )
             
             for (params in workingParams) {
                 try {
-                    val paramDoc = app.get(data, params = params).document
+                    val paramDoc = app.get(data, params = params, headers = safeHeaders).document
                     paramDoc.select("iframe").forEach { iframe ->
                         val iframeUrl = iframe.attr("src")
                         if (iframeUrl.isNotBlank()) {
