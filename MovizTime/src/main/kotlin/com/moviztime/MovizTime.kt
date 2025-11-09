@@ -10,7 +10,7 @@ class MovizTime : MainAPI() {
     override var name = "Moviz Time"
     override val usesWebView = false
     override val hasMainPage = true
-    override val supportedTypes = setOf(TvType.Movie)
+    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
     override val mainPage = mainPageOf(
         "$mainUrl" to "الأفلام المضافة حديثاً",
@@ -30,18 +30,28 @@ class MovizTime : MainAPI() {
         request: MainPageRequest
     ): HomePageResponse {
         val url = if (page > 1) "${request.data}page/$page/" else request.data
-        val document = app.get(url).document
+        val document = app.get(url, cloudflare = true).document
         
-        // Use exact selectors from analysis: article (34 items), .post (9 items)
         val home = document.select("article, .post").mapNotNull { element ->
-            // Use .title-2 selector found in analysis
-            val title = element.select(".title-2, h2, h3").text()
-            val href = element.select("a").attr("href")
-            val poster = element.select("img").attr("src")
+            val titleElement = element.selectFirst(".title-2, h2, h3, a")
+            val title = titleElement?.text() ?: ""
+            val href = titleElement?.attr("href") ?: element.selectFirst("a")?.attr("href") ?: ""
+            val poster = element.selectFirst("img")?.attr("src") ?: ""
             
             if (title.isNotBlank() && href.isNotBlank()) {
-                newMovieSearchResponse(title, href, TvType.Movie) {
-                    this.posterUrl = poster
+                // Check if it's series or movie by URL or title
+                val isSeries = href.contains("مسلسل") || title.contains("مسلسل") || 
+                              href.contains("series") || href.contains("season", true) ||
+                              request.name.contains("مسلسل")
+                
+                if (isSeries) {
+                    newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
+                        this.posterUrl = poster
+                    }
+                } else {
+                    newMovieSearchResponse(title, href, TvType.Movie) {
+                        this.posterUrl = poster
+                    }
                 }
             } else null
         }
@@ -49,31 +59,51 @@ class MovizTime : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val document = app.get("$mainUrl/?s=$query").document
+        val document = app.get("$mainUrl/?s=$query", cloudflare = true).document
         
         return document.select("article, .post").mapNotNull { element ->
-            val title = element.select(".title-2, h2, h3").text()
-            val href = element.select("a").attr("href")
-            val poster = element.select("img").attr("src")
+            val titleElement = element.selectFirst(".title-2, h2, h3, a")
+            val title = titleElement?.text() ?: ""
+            val href = titleElement?.attr("href") ?: element.selectFirst("a")?.attr("href") ?: ""
+            val poster = element.selectFirst("img")?.attr("src") ?: ""
             
             if (title.isNotBlank() && href.isNotBlank()) {
-                newMovieSearchResponse(title, href, TvType.Movie) {
-                    this.posterUrl = poster
+                val isSeries = href.contains("مسلسل") || title.contains("مسلسل") || 
+                              href.contains("series") || href.contains("season", true)
+                
+                if (isSeries) {
+                    newTvSeriesSearchResponse(title, href, TvType.TvSeries) {
+                        this.posterUrl = poster
+                    }
+                } else {
+                    newMovieSearchResponse(title, href, TvType.Movie) {
+                        this.posterUrl = poster
+                    }
                 }
             } else null
         }
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val document = app.get(url).document
+        val document = app.get(url, cloudflare = true).document
         
         val title = document.selectFirst("h1, .entry-title")?.text() ?: "Unknown"
         val poster = document.selectFirst("img")?.attr("src") ?: ""
         val description = document.selectFirst(".content, .entry-content")?.text() ?: ""
         
-        return newMovieLoadResponse(title, url, TvType.Movie, url) {
-            this.posterUrl = poster
-            this.plot = description
+        val isSeries = url.contains("مسلسل") || title.contains("مسلسل") || 
+                      url.contains("series") || url.contains("season", true)
+        
+        if (isSeries) {
+            return newTvSeriesLoadResponse(title, url, TvType.TvSeries, emptyList()) {
+                this.posterUrl = poster
+                this.plot = description
+            }
+        } else {
+            return newMovieLoadResponse(title, url, TvType.Movie, url) {
+                this.posterUrl = poster
+                this.plot = description
+            }
         }
     }
 
@@ -85,8 +115,8 @@ class MovizTime : MainAPI() {
     ): Boolean {
         var foundLinks = false
         
-        // METHOD 1: Enhanced iframe extraction
-        val mainDoc = app.get(data).document
+        // METHOD 1: Enhanced iframe extraction with Cloudflare
+        val mainDoc = app.get(data, cloudflare = true).document
         
         // Extract all iframes
         mainDoc.select("iframe").forEach { iframe ->
@@ -107,7 +137,7 @@ class MovizTime : MainAPI() {
             
             for (params in workingParams) {
                 try {
-                    val paramDoc = app.get(data, params = params).document
+                    val paramDoc = app.get(data, params = params, cloudflare = true).document
                     paramDoc.select("iframe").forEach { iframe ->
                         val iframeUrl = iframe.attr("src")
                         if (iframeUrl.isNotBlank()) {
@@ -124,8 +154,8 @@ class MovizTime : MainAPI() {
         
         // METHOD 3: Direct video links
         if (!foundLinks) {
-            mainDoc.select("a[href*='.mp4'], a[href*='.m3u8']").forEach { link ->
-                val url = link.attr("href")
+            mainDoc.select("a[href*='.mp4'], a[href*='.m3u8'], video source").forEach { link ->
+                val url = link.attr("href") ?: link.attr("src")
                 if (url.isNotBlank()) {
                     foundLinks = true
                     loadExtractor(url, data, subtitleCallback, callback)
