@@ -3,6 +3,7 @@ package com.fajrshow
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
+import com.lagradost.cloudstream3.network.CloudflareKiller
 import org.jsoup.nodes.Element
 import java.net.URLEncoder
 
@@ -10,16 +11,17 @@ class Fajrshow : MainAPI() {
     override var lang = "ar"
     override var mainUrl = "https://fajer.show"
     override var name = "Fajrshow"
-    override val usesWebView = true // Keep WebView as fallback
+    override val usesWebView = false // Using CloudflareKiller instead
     override val hasMainPage = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
-    // Simple headers without complex Cloudflare bypass
-    override fun getHeaders(): Map<String, String> = mapOf(
-        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language" to "ar,en-US;q=0.7,en;q=0.3",
-        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    )
+    // Cloudflare Killer interceptor - CORRECT IMPLEMENTATION
+    private val cloudflareKiller by lazy { CloudflareKiller() }
+
+    // Override client with CloudflareKiller
+    override val client = super.client.newBuilder()
+        .addInterceptor(cloudflareKiller)
+        .build()
 
     private fun String.getIntFromText(): Int? {
         return Regex("""\d+""").find(this)?.groupValues?.firstOrNull()?.toIntOrNull()
@@ -70,7 +72,7 @@ class Fajrshow : MainAPI() {
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         return try {
             val url = if (page > 1) "${request.data}page/$page/" else request.data
-            val document = app.get(url, headers = getHeaders()).document
+            val document = app.get(url).document
             
             val home = document.select("article.item").mapNotNull { element ->
                 try {
@@ -94,7 +96,7 @@ class Fajrshow : MainAPI() {
         return try {
             if (query.length < 3) return emptyList()
             val encodedQuery = URLEncoder.encode(query, "UTF-8")
-            val doc = app.get("$mainUrl/?s=$encodedQuery", headers = getHeaders()).document
+            val doc = app.get("$mainUrl/?s=$encodedQuery").document
             
             doc.select("article.item").mapNotNull { element ->
                 try {
@@ -115,11 +117,11 @@ class Fajrshow : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         return try {
-            val doc = app.get(url, headers = getHeaders()).document
+            val doc = app.get(url).document
             
             val title = doc.selectFirst("h1")?.text()?.cleanTitle() ?: "Unknown Title"
-            val posterUrl = doc.selectFirst("img")?.attr("src") ?: ""
-            val synopsis = doc.selectFirst(".entry-content, .wp-content, p")?.text() ?: ""
+            val posterUrl = doc.selectFirst("img[src*='wp-content']")?.attr("src") ?: ""
+            val synopsis = doc.selectFirst(".entry-content, .wp-content")?.text() ?: ""
             
             val year = doc.selectFirst(".year, .date")?.text()?.getIntFromText()
             
@@ -154,7 +156,7 @@ class Fajrshow : MainAPI() {
     ): Boolean {
         return try {
             var foundLinks = false
-            val doc = app.get(data, headers = getHeaders()).document
+            val doc = app.get(data).document
             
             doc.select("iframe").forEach { iframe ->
                 val src = iframe.attr("src")
