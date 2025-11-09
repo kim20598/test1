@@ -126,14 +126,17 @@ class MovizTime : MainAPI() {
         
         val youtubeTrailer = doc.selectFirst("iframe[src*='youtube'], iframe[src*='youtu.be']")?.attr("src") ?: ""
         
-        // Check for series episodes
+        // Check for series episodes - FIXED: Use newEpisode method
         val episodes = doc.select(".episode, .episodes-list a, .episode-item").mapNotNull { episodeElement ->
             val epTitle = episodeElement.selectFirst(".title, h3, h4")?.text()?.trim() ?: "Episode"
             val epUrl = episodeElement.attr("href")
             val epNumber = episodeElement.selectFirst(".number, .episode-num")?.text()?.toIntOrNull() ?: 1
             
             if (epUrl.isNotBlank()) {
-                Episode(epUrl, episode = epNumber, title = epTitle)
+                newEpisode(epUrl) {
+                    this.episode = epNumber
+                    this.name = epTitle
+                }
             } else null
         }
 
