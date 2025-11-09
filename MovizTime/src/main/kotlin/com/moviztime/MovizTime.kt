@@ -1,4 +1,4 @@
-package com.moviztimelive
+package com.moviztime
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
