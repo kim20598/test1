@@ -1,4 +1,4 @@
-package com.
+package com.fushaar
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
