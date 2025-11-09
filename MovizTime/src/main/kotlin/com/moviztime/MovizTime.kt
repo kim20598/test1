@@ -7,11 +7,11 @@ import org.jsoup.Jsoup
 class MovizTime : MainAPI() {
     override var mainUrl = "https://moviz-time.live"
     override var name = "MovizTime"
-    override val hasMainPage = true
     override var lang = "ar"
+    override val hasMainPage = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime)
 
-    private fun String.toAbsoluteUrl(): String {
+    private fun String.toAbsolute(): String {
         return when {
             this.startsWith("http") -> this
             this.startsWith("//") -> "https:$this"
@@ -20,29 +20,22 @@ class MovizTime : MainAPI() {
     }
 
     override val mainPage = mainPageOf(
-        "$mainUrl/category/%d8%a3%d9%81%d9%84%d8%a7%d9%85-2025/" to "أفلام 2025",
-        "$mainUrl/category/%d8%a3%d9%81%d9%84%d8%a7%d9%85-2024/" to "أفلام 2024",
-        "$mainUrl/category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%a3%d8%ac%d9%86%d8%a8%d9%8a%d8%a9-%d9%85%d8%aa%d8%b1%d8%ac%d9%85%d8%a9-e/" to "مسلسلات أجنبية",
-        "$mainUrl/category/%d9%82%d8%a7%d8%a6%d9%85%d8%a9-%d8%a7%d9%84%d8%a3%d9%86%d9%85%d9%8a-b/%d8%a3%d9%81%d9%84%d8%a7%d9%85-%d8%a3%d9%86%d9%85%d9%8a/" to "أفلام أنمي",
-        "$mainUrl/category/%d9%82%d8%a7%d8%a6%d9%85%d8%a9-%d8%a7%d9%84%d8%a3%d9%86%d9%85%d9%8a-b/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%a3%d9%86%d9%85%d9%8a/" to "مسلسلات أنمي"
+        "$mainUrl/page/" to "أحدث الإضافات"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val url = if (page == 1) request.data else "${request.data}page/$page/"
+        val url = "${request.data}$page"
         val doc = app.get(url).document
 
-        val items = doc.select("article.pinbox").mapNotNull { article ->
-            val link = article.selectFirst("a[href]")?.attr("href")?.toAbsoluteUrl() ?: return@mapNotNull null
-            val title = article.selectFirst("a[title]")?.attr("title") ?: return@mapNotNull null
-            val poster = article.selectFirst("img")?.attr("src")?.toAbsoluteUrl()
-            val type = when {
-                link.contains("/anime") -> TvType.Anime
-                link.contains("/series") -> TvType.TvSeries
-                else -> TvType.Movie
-            }
+        val items = doc.select("article.pinbox").mapNotNull {
+            val title = it.selectFirst(".title-2 a")?.text()?.trim() ?: return@mapNotNull null
+            val href = it.selectFirst(".title-2 a")?.attr("href")?.toAbsolute() ?: return@mapNotNull null
+            val poster = it.selectFirst(".preview img")?.attr("src")?.toAbsolute()
+            val quality = it.selectFirst("._quality_tag")?.text()
 
-            newMovieSearchResponse(title, link, type) {
+            newMovieSearchResponse(title, href, TvType.Movie) {
                 this.posterUrl = poster
+                this.quality = getQualityFromString(quality)
             }
         }
 
@@ -53,31 +46,46 @@ class MovizTime : MainAPI() {
         val url = "$mainUrl/?s=${query.replace(" ", "+")}"
         val doc = app.get(url).document
 
-        return doc.select("article.pinbox").mapNotNull { article ->
-            val link = article.selectFirst("a[href]")?.attr("href")?.toAbsoluteUrl() ?: return@mapNotNull null
-            val title = article.selectFirst("a[title]")?.attr("title") ?: return@mapNotNull null
-            val poster = article.selectFirst("img")?.attr("src")?.toAbsoluteUrl()
-            val type = when {
-                link.contains("/anime") -> TvType.Anime
-                link.contains("/series") -> TvType.TvSeries
-                else -> TvType.Movie
-            }
+        return doc.select("article.pinbox").mapNotNull {
+            val title = it.selectFirst(".title-2 a")?.text()?.trim() ?: return@mapNotNull null
+            val href = it.selectFirst(".title-2 a")?.attr("href")?.toAbsolute() ?: return@mapNotNull null
+            val poster = it.selectFirst(".preview img")?.attr("src")?.toAbsolute()
+            val quality = it.selectFirst("._quality_tag")?.text()
+            val type = if (href.contains("/anime/") || href.contains("/series/")) TvType.TvSeries else TvType.Movie
 
-            newMovieSearchResponse(title, link, type) {
+            newMovieSearchResponse(title, href, type) {
                 this.posterUrl = poster
+                this.quality = getQualityFromString(quality)
             }
         }
     }
 
     override suspend fun load(url: String): LoadResponse {
         val doc = app.get(url).document
-        val title = doc.selectFirst("h1.entry-title, h1.single-title")?.text() ?: "غير معروف"
-        val poster = doc.selectFirst("img.wp-post-image, .single-thumbnail img")?.attr("src")?.toAbsoluteUrl()
-        val plot = doc.selectFirst("div.entry-content p, .extra-content p")?.text()
+        val title = doc.selectFirst("h1.entry-title")?.text() ?: "غير معروف"
+        val poster = doc.selectFirst(".poster img, .preview img")?.attr("src")?.toAbsolute()
+        val plot = doc.selectFirst("div.entry-content p, .story p")?.text()
 
-        return newMovieLoadResponse(title, url, TvType.Movie, url) {
-            this.posterUrl = poster
-            this.plot = plot
+        val isSeries = url.contains("/series/") || url.contains("/anime/")
+
+        return if (!isSeries) {
+            newMovieLoadResponse(title, url, TvType.Movie, url) {
+                this.posterUrl = poster
+                this.plot = plot
+            }
+        } else {
+            val episodes = doc.select(".episode-list a").mapNotNull { ep ->
+                val epTitle = ep.text()
+                val epUrl = ep.attr("href").toAbsolute()
+                newEpisode(epUrl) {
+                    this.name = epTitle
+                }
+            }
+
+            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+                this.posterUrl = poster
+                this.plot = plot
+            }
         }
     }
 
@@ -88,15 +96,13 @@ class MovizTime : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val doc = app.get(data).document
+        val iframeLinks = doc.select("iframe, a[href*='.m3u8'], a[href*='.mp4']")
+            .mapNotNull { it.attr("src").ifBlank { it.attr("href") }?.toAbsolute() }
 
-        val links = doc.select("a[href*='m3u8'], a[href*='mp4'], iframe[src]").mapNotNull {
-            it.attr("href").ifEmpty { it.attr("src") }.toAbsoluteUrl()
-        }
-
-        links.forEach { link ->
+        iframeLinks.forEach { link ->
             loadExtractor(link, data, subtitleCallback, callback)
         }
 
-        return links.isNotEmpty()
+        return iframeLinks.isNotEmpty()
     }
 }
