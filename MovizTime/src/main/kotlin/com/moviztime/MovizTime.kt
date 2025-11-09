@@ -10,7 +10,7 @@ class MovizTime : MainAPI() {
     override var name = "Moviz Time"
     override val usesWebView = false
     override val hasMainPage = true
-    override val supportedTypes = setOf(TvType.Movie)
+    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
     override val mainPage = mainPageOf(
         "$mainUrl" to "الأفلام المضافة حديثاً",
@@ -21,7 +21,8 @@ class MovizTime : MainAPI() {
         "$mainUrl/category/%d8%a3%d9%81%d9%84%d8%a7%d9%85-2021/" to "أفلام 2021",
         "$mainUrl/category/%d8%a3%d9%81%d9%84%d8%a7%d9%85-%d8%a3%d8%ac%d9%86%d8%a8%d9%8a%d8%a9/" to "أفلام أجنبية",
         "$mainUrl/category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%a3%d8%ac%d9%86%d8%a8%d9%8a%d8%a9-%d9%85%d8%aa%d8%b1%d8%ac%d9%85%d8%a9-e/" to "مسلسلات أجنبية",
-        "$mainUrl/category/%d9%82%d8%a7%d8%a6%d9%85%d8%a9-%d8%a7%d9%84%d8%a3%d9%86%d9%85%d9%8a-b/%d8%a3%d9%81%d9%84%d8%a7%d9%85-%d8%a3%d9%86%d9%85%d9%8a/" to "أفلام أنمي"
+        "$mainUrl/category/%d9%82%d8%a7%d8%a6%d9%85%d8%a9-%d8%a7%d9%84%d8%a3%d9%86%d9%85%d9%8a-b/%d8%a3%d9%81%d9%84%d8%a7%d9%85-%d8%a3%d9%86%d9%85%d9%8a/" to "أفلام أنمي",
+        "$mainUrl/category/imdb-top-250/" to "IMDb Top 250"
     )
 
     override suspend fun getMainPage(
@@ -31,14 +32,25 @@ class MovizTime : MainAPI() {
         val url = if (page > 1) "${request.data}page/$page/" else request.data
         val document = app.get(url).document
         
+        // Use exact selectors from analysis: article (34 items), .post (9 items)
         val home = document.select("article, .post").mapNotNull { element ->
-            val title = element.select("h2, h3").text()
+            // Use .title-2 selector found in analysis
+            val title = element.select(".title-2, h2, h3").text()
             val href = element.select("a").attr("href")
             val poster = element.select("img").attr("src")
             
+            // Determine type from URL
+            val isSeries = href.contains("/anime/") || href.contains("/series/") || title.contains("موسم")
+            
             if (title.isNotBlank() && href.isNotBlank()) {
-                newMovieSearchResponse(title, href, TvType.Movie) {
-                    this.posterUrl = poster
+                if (isSeries) {
+                    newTvSeriesSearchResponse(title, href) {
+                        this.posterUrl = poster
+                    }
+                } else {
+                    newMovieSearchResponse(title, href, TvType.Movie) {
+                        this.posterUrl = poster
+                    }
                 }
             } else null
         }
@@ -46,16 +58,24 @@ class MovizTime : MainAPI() {
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val document = app.get("$mainUrl/?s=${query}").document
+        val document = app.get("$mainUrl/?s=$query").document
         
         return document.select("article, .post").mapNotNull { element ->
-            val title = element.select("h2, h3").text()
+            val title = element.select(".title-2, h2, h3").text()
             val href = element.select("a").attr("href")
             val poster = element.select("img").attr("src")
             
+            val isSeries = href.contains("/anime/") || href.contains("/series/")
+            
             if (title.isNotBlank() && href.isNotBlank()) {
-                newMovieSearchResponse(title, href, TvType.Movie) {
-                    this.posterUrl = poster
+                if (isSeries) {
+                    newTvSeriesSearchResponse(title, href) {
+                        this.posterUrl = poster
+                    }
+                } else {
+                    newMovieSearchResponse(title, href, TvType.Movie) {
+                        this.posterUrl = poster
+                    }
                 }
             } else null
         }
@@ -64,13 +84,23 @@ class MovizTime : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url).document
         
-        val title = document.selectFirst("h1")?.text() ?: "Unknown"
+        val title = document.selectFirst("h1, .entry-title")?.text() ?: "Unknown"
         val poster = document.selectFirst("img")?.attr("src") ?: ""
         val description = document.selectFirst(".content, .entry-content")?.text() ?: ""
         
-        return newMovieLoadResponse(title, url, TvType.Movie, url) {
-            this.posterUrl = poster
-            this.plot = description
+        // Check if it's a series
+        val isSeries = url.contains("/anime/") || url.contains("/series/") || title.contains("موسم")
+        
+        return if (isSeries) {
+            newTvSeriesLoadResponse(title, url, TvType.TvSeries) {
+                this.posterUrl = poster
+                this.plot = description
+            }
+        } else {
+            newMovieLoadResponse(title, url, TvType.Movie, url) {
+                this.posterUrl = poster
+                this.plot = description
+            }
         }
     }
 
@@ -85,7 +115,7 @@ class MovizTime : MainAPI() {
         // METHOD 1: Enhanced iframe extraction
         val mainDoc = app.get(data).document
         
-        // Extract all iframes (analysis found 1 iframe per page)
+        // Extract all iframes
         mainDoc.select("iframe").forEach { iframe ->
             val iframeUrl = iframe.attr("src")
             if (iframeUrl.isNotBlank()) {
@@ -94,7 +124,7 @@ class MovizTime : MainAPI() {
             }
         }
         
-        // METHOD 2: Try with GET parameters that worked in analysis
+        // METHOD 2: Try with GET parameters
         if (!foundLinks) {
             val workingParams = listOf(
                 mapOf("view" to "1"),
@@ -119,22 +149,7 @@ class MovizTime : MainAPI() {
             }
         }
         
-        // METHOD 3: Try video sources and embeds
-        if (!foundLinks) {
-            mainDoc.select("video source, [data-video]").forEach { element ->
-                val videoUrl = if (element.hasAttr("data-video")) {
-                    element.attr("data-video")
-                } else {
-                    element.attr("src")
-                }
-                if (videoUrl.isNotBlank()) {
-                    foundLinks = true
-                    loadExtractor(videoUrl, data, subtitleCallback, callback)
-                }
-            }
-        }
-        
-        // METHOD 4: Direct video links (your original method)
+        // METHOD 3: Direct video links
         if (!foundLinks) {
             mainDoc.select("a[href*='.mp4'], a[href*='.m3u8']").forEach { link ->
                 val url = link.attr("href")
