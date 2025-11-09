@@ -115,7 +115,7 @@ class MovizTime : MainAPI() {
         }
         val youtubeTrailer = doc.selectFirst("iframe[src*='youtube'], iframe[src*='youtu.be']")?.attr("src") ?: ""
         
-        // FIXED: Use newEpisode with proper parameters
+        // Check for series episodes
         val episodes = doc.select(".episode, .episodes-list a, .episode-item").mapNotNull { episodeElement ->
             val epTitle = episodeElement.selectFirst(".title, h3, h4")?.text()?.trim() ?: "Episode"
             val epUrl = episodeElement.attr("href")
@@ -139,34 +139,39 @@ class MovizTime : MainAPI() {
                      title.contains("انمي") || 
                      title.contains("anime")
 
+        // FIXED: Use proper load response methods without boolean parameter
         return when {
             hasEpisodes && isAnime -> {
-                newAnimeLoadResponse(title, url, TvType.Anime, episodes) {
+                newAnimeLoadResponse(title, url, TvType.Anime) {
                     this.posterUrl = posterUrl
-                    this.recommendations = recommendations
                     this.plot = synopsis
-                    this.tags = tags
                     this.year = year
+                    this.tags = tags
+                    this.recommendations = recommendations
                     addTrailer(youtubeTrailer)
+                    // Add episodes separately
+                    this.episodes = episodes
                 }
             }
             hasEpisodes -> {
-                newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+                newTvSeriesLoadResponse(title, url, TvType.TvSeries) {
                     this.posterUrl = posterUrl
-                    this.recommendations = recommendations
                     this.plot = synopsis
-                    this.tags = tags
                     this.year = year
+                    this.tags = tags
+                    this.recommendations = recommendations
                     addTrailer(youtubeTrailer)
+                    // Add episodes separately
+                    this.episodes = episodes
                 }
             }
             else -> {
                 newMovieLoadResponse(title, url, TvType.Movie, url) {
                     this.posterUrl = posterUrl
-                    this.recommendations = recommendations
                     this.plot = synopsis
-                    this.tags = tags
                     this.year = year
+                    this.tags = tags
+                    this.recommendations = recommendations
                     addTrailer(youtubeTrailer)
                 }
             }
