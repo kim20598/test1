@@ -20,21 +20,28 @@ class MovizTime : MainAPI() {
     }
 
     override val mainPage = mainPageOf(
-        "$mainUrl/page/" to "أحدث الإضافات"
+        "$mainUrl/category/%d8%a3%d9%81%d9%84%d8%a7%d9%85-2025/page/" to "أفلام 2025",
+        "$mainUrl/category/%d8%a3%d9%81%d9%84%d8%a7%d9%85-2024/page/" to "أفلام 2024",
+        "$mainUrl/category/%d8%a3%d9%81%d9%84%d8%a7%d9%85-2023/page/" to "أفلام 2023",
+        "$mainUrl/category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%a3%d8%ac%d9%86%d8%a8%d9%8a%d8%a9-%d9%85%d8%aa%d8%b1%d8%ac%d9%85%d8%a9-e/page/" to "مسلسلات أجنبية",
+        "$mainUrl/category/%d9%82%d8%a7%d8%a6%d9%85%d8%a9-%d8%a7%d9%84%d8%a3%d9%86%d9%85%d9%8a-b/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%a3%d9%86%d9%85%d9%8a/page/" to "مسلسلات أنمي",
+        "$mainUrl/category/%d9%82%d8%a7%d8%a6%d9%85%d8%a9-%d8%a7%d9%84%d8%a3%d9%86%d9%85%d9%8a-b/%d8%a3%d9%81%d9%84%d8%a7%d9%85-%d8%a3%d9%86%d9%85%d9%8a/page/" to "أفلام أنمي"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val url = "${request.data}$page"
         val doc = app.get(url).document
 
-        val items = doc.select("article.pinbox").mapNotNull {
-            val title = it.selectFirst(".title-2 a")?.text()?.trim() ?: return@mapNotNull null
-            val href = it.selectFirst(".title-2 a")?.attr("href")?.toAbsolute() ?: return@mapNotNull null
-            val poster = it.selectFirst(".preview img")?.attr("src")?.toAbsolute()
+        val items = doc.select("article.pinbox, div.pinbox").mapNotNull {
+            val linkElement = it.selectFirst("a[href]")
+            val href = linkElement?.attr("href")?.toAbsolute() ?: return@mapNotNull null
+            val title = linkElement.attr("title").ifBlank { linkElement.text() }
+            val img = it.selectFirst("img")?.attr("src")?.toAbsolute()
             val quality = it.selectFirst("._quality_tag")?.text()
+            val type = if (href.contains("/anime/") || href.contains("/series/")) TvType.TvSeries else TvType.Movie
 
-            newMovieSearchResponse(title, href, TvType.Movie) {
-                this.posterUrl = poster
+            newMovieSearchResponse(title, href, type) {
+                this.posterUrl = img
                 this.quality = getQualityFromString(quality)
             }
         }
@@ -46,15 +53,16 @@ class MovizTime : MainAPI() {
         val url = "$mainUrl/?s=${query.replace(" ", "+")}"
         val doc = app.get(url).document
 
-        return doc.select("article.pinbox").mapNotNull {
-            val title = it.selectFirst(".title-2 a")?.text()?.trim() ?: return@mapNotNull null
-            val href = it.selectFirst(".title-2 a")?.attr("href")?.toAbsolute() ?: return@mapNotNull null
-            val poster = it.selectFirst(".preview img")?.attr("src")?.toAbsolute()
+        return doc.select("article.pinbox, div.pinbox").mapNotNull {
+            val link = it.selectFirst("a[href]") ?: return@mapNotNull null
+            val href = link.attr("href").toAbsolute()
+            val title = link.attr("title").ifBlank { link.text() }
+            val img = it.selectFirst("img")?.attr("src")?.toAbsolute()
             val quality = it.selectFirst("._quality_tag")?.text()
             val type = if (href.contains("/anime/") || href.contains("/series/")) TvType.TvSeries else TvType.Movie
 
             newMovieSearchResponse(title, href, type) {
-                this.posterUrl = poster
+                this.posterUrl = img
                 this.quality = getQualityFromString(quality)
             }
         }
@@ -63,7 +71,7 @@ class MovizTime : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val doc = app.get(url).document
         val title = doc.selectFirst("h1.entry-title")?.text() ?: "غير معروف"
-        val poster = doc.selectFirst(".poster img, .preview img")?.attr("src")?.toAbsolute()
+        val poster = doc.selectFirst(".poster img, .preview img, img.wp-post-image")?.attr("src")?.toAbsolute()
         val plot = doc.selectFirst("div.entry-content p, .story p")?.text()
 
         val isSeries = url.contains("/series/") || url.contains("/anime/")
@@ -77,9 +85,7 @@ class MovizTime : MainAPI() {
             val episodes = doc.select(".episode-list a").mapNotNull { ep ->
                 val epTitle = ep.text()
                 val epUrl = ep.attr("href").toAbsolute()
-                newEpisode(epUrl) {
-                    this.name = epTitle
-                }
+                newEpisode(epUrl) { this.name = epTitle }
             }
 
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
