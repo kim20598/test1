@@ -10,7 +10,7 @@ class Fajrshow : MainAPI() {
     override var lang = "ar"
     override var mainUrl = "https://fajer.show"
     override var name = "Fajrshow"
-    override val usesWebView = true
+    override val usesWebView = false
     override val hasMainPage = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
