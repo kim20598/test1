@@ -41,7 +41,12 @@ class MovizTime : MainAPI() {
         val home = document.select("article, .post").mapNotNull { element ->
             val title = element.select(".title-2, h2, h3").text().trim()
             var href = element.select("a").attr("href")
-            var poster = element.select("img").attr("src")
+            
+            // Better poster extraction - get the main image with proper dimensions
+            var poster = element.select("img[width][height]").attr("src") // Get images with dimensions first
+            if (poster.isBlank()) {
+                poster = element.select("img").attr("src") // Fallback to any image
+            }
             
             // Simple URL fixes
             if (href.isNotBlank() && !href.startsWith("http")) {
@@ -67,7 +72,12 @@ class MovizTime : MainAPI() {
         return document.select("article, .post").mapNotNull { element ->
             val title = element.select(".title-2, h2, h3").text().trim()
             var href = element.select("a").attr("href")
-            var poster = element.select("img").attr("src")
+            
+            // Better poster extraction
+            var poster = element.select("img[width][height]").attr("src")
+            if (poster.isBlank()) {
+                poster = element.select("img").attr("src")
+            }
             
             if (href.isNotBlank() && !href.startsWith("http")) {
                 href = if (href.startsWith("/")) "$mainUrl$href" else "$mainUrl/$href"
@@ -89,7 +99,11 @@ class MovizTime : MainAPI() {
         val document = app.get(url, headers = cfHeaders).document
         
         val title = document.selectFirst("h1")?.text()?.trim() ?: "Unknown"
-        var poster = document.selectFirst("img")?.attr("src") ?: ""
+        
+        // Better poster extraction for movie page
+        var poster = document.selectFirst("img[width][height]")?.attr("src") ?: 
+                    document.selectFirst("img")?.attr("src") ?: ""
+        
         val description = document.selectFirst(".content, .entry-content")?.text()?.trim() ?: ""
         
         if (poster.isNotBlank() && !poster.startsWith("http")) {
