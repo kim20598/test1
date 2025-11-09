@@ -80,23 +80,68 @@ class MovizTime : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val document = app.get(data).document
-        
         var foundLinks = false
         
-        document.select("iframe").forEach { iframe ->
-            val url = iframe.attr("src")
-            if (url.isNotBlank()) {
+        // METHOD 1: Enhanced iframe extraction
+        val mainDoc = app.get(data).document
+        
+        // Extract all iframes (analysis found 1 iframe per page)
+        mainDoc.select("iframe").forEach { iframe ->
+            val iframeUrl = iframe.attr("src")
+            if (iframeUrl.isNotBlank()) {
                 foundLinks = true
-                loadExtractor(url, data, subtitleCallback, callback)
+                loadExtractor(iframeUrl, data, subtitleCallback, callback)
             }
         }
         
-        document.select("a[href*='.mp4'], a[href*='.m3u8']").forEach { link ->
-            val url = link.attr("href")
-            if (url.isNotBlank()) {
-                foundLinks = true
-                loadExtractor(url, data, subtitleCallback, callback)
+        // METHOD 2: Try with GET parameters that worked in analysis
+        if (!foundLinks) {
+            val workingParams = listOf(
+                mapOf("view" to "1"),
+                mapOf("load" to "video"), 
+                mapOf("play" to "1")
+            )
+            
+            for (params in workingParams) {
+                try {
+                    val paramDoc = app.get(data, params = params).document
+                    paramDoc.select("iframe").forEach { iframe ->
+                        val iframeUrl = iframe.attr("src")
+                        if (iframeUrl.isNotBlank()) {
+                            foundLinks = true
+                            loadExtractor(iframeUrl, data, subtitleCallback, callback)
+                        }
+                    }
+                    if (foundLinks) break
+                } catch (e: Exception) {
+                    // Continue to next parameter
+                }
+            }
+        }
+        
+        // METHOD 3: Try video sources and embeds
+        if (!foundLinks) {
+            mainDoc.select("video source, [data-video]").forEach { element ->
+                val videoUrl = if (element.hasAttr("data-video")) {
+                    element.attr("data-video")
+                } else {
+                    element.attr("src")
+                }
+                if (videoUrl.isNotBlank()) {
+                    foundLinks = true
+                    loadExtractor(videoUrl, data, subtitleCallback, callback)
+                }
+            }
+        }
+        
+        // METHOD 4: Direct video links (your original method)
+        if (!foundLinks) {
+            mainDoc.select("a[href*='.mp4'], a[href*='.m3u8']").forEach { link ->
+                val url = link.attr("href")
+                if (url.isNotBlank()) {
+                    foundLinks = true
+                    loadExtractor(url, data, subtitleCallback, callback)
+                }
             }
         }
         
