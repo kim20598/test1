@@ -80,23 +80,42 @@ class MovizTime : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val document = app.get(data).document
-        
         var foundLinks = false
         
-        document.select("iframe").forEach { iframe ->
-            val url = iframe.attr("src")
-            if (url.isNotBlank()) {
+        // METHOD 1: Extract from main page iframe
+        val mainDoc = app.get(data).document
+        val iframes = mainDoc.select("iframe")
+        
+        iframes.forEach { iframe ->
+            val iframeUrl = iframe.attr("src")
+            if (iframeUrl.isNotBlank()) {
                 foundLinks = true
-                loadExtractor(url, data, subtitleCallback, callback)
+                loadExtractor(iframeUrl, data, subtitleCallback, callback)
             }
         }
         
-        document.select("a[href*='.mp4'], a[href*='.m3u8']").forEach { link ->
-            val url = link.attr("href")
-            if (url.isNotBlank()) {
-                foundLinks = true
-                loadExtractor(url, data, subtitleCallback, callback)
+        // METHOD 2: Try with GET parameters
+        if (!foundLinks) {
+            val workingParams = listOf(
+                mapOf("view" to "1"),
+                mapOf("load" to "video"), 
+                mapOf("play" to "1")
+            )
+            
+            for (params in workingParams) {
+                try {
+                    val paramDoc = app.get(data, params = params).document
+                    paramDoc.select("iframe").forEach { iframe ->
+                        val iframeUrl = iframe.attr("src")
+                        if (iframeUrl.isNotBlank()) {
+                            foundLinks = true
+                            loadExtractor(iframeUrl, data, subtitleCallback, callback)
+                        }
+                    }
+                    if (foundLinks) break
+                } catch (e: Exception) {
+                    // Continue to next method
+                }
             }
         }
         
