@@ -8,7 +8,7 @@ class MovizTime : MainAPI() {
     override var mainUrl = "https://moviz-time.live"
     override var name = "MovizTime"
     override var lang = "ar"
-    override val hasMainPage = true
+    override val hasMainPage = false
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
     private fun String.toAbsolute(): String {
