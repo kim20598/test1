@@ -10,8 +10,8 @@ import java.net.URLEncoder
 class Fajrshow : MainAPI() {
     override var lang = "ar"
     override var mainUrl = "https://fajer.show"
-    override var name = "Fajrshow1"
-    override val usesWebView = false
+    override var name = "Fajrshow"
+    override val usesWebView = true
     override val hasMainPage = true
     override val supportedTypes = setOf(TvType.Movie)
 
