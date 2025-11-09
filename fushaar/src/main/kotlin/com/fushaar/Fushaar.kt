@@ -1,121 +1,95 @@
-package com.fushaar
+package com.moviztime
 
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
 import org.jsoup.nodes.Element
-import java.net.URLEncoder
 
-class Fushaar : MainAPI() {
-    override var lang = "ar"
-    override var mainUrl = "https://fushaar.com"
-    override var name = "Fushaar"
+class MovizTime : MainAPI() {
+    override var mainUrl = "https://moviz-time.live"
+    override var name = "Moviz Time"
     override val usesWebView = false
     override val hasMainPage = true
     override val supportedTypes = setOf(TvType.Movie)
 
-    private fun String.getIntFromText(): Int? {
-        return Regex("""\d+""").find(this)?.groupValues?.firstOrNull()?.toIntOrNull()
-    }
-    
-    private fun String.cleanTitle(): String {
-        return this.replace("مشاهدة وتحميل فلم|مشاهدة وتحميل|اونلاين|مترجم".toRegex(), "").trim()
-    }
-
-    // Store poster URLs when we find them in search/main page
-    private val posterCache = mutableMapOf<String, String>()
-
-    private fun Element.toSearchResponse(): SearchResponse {
-        val title = select("h3").text().cleanTitle()
-        
-        // Get the poster from data-lazy-src (the good one from main page)
-        val posterUrl = select("img").attr("data-lazy-src")
-        val href = select("a").attr("href")
-        
-        // Store the poster URL for later use in load()
-        if (posterUrl.isNotBlank()) {
-            posterCache[href] = posterUrl
-        }
-        
-        return newMovieSearchResponse(title, href, TvType.Movie) {
-            this.posterUrl = posterUrl
-        }
-    }
-
-    // Fushaar categories
-    override val mainPage = mainPageOf(
-        "$mainUrl/page/" to "Movies | أفلام",
-        "$mainUrl/gerne/action/" to "Action | أكشن",
-        "$mainUrl/gerne/adventure/" to "Adventure | مغامرة",
-        "$mainUrl/gerne/animation/" to "Animation | أنيمايشن",
-        "$mainUrl/gerne/biography/" to "Biography | سيرة",
-        "$mainUrl/gerne/comedy/" to "Comedy | كوميديا",
-        "$mainUrl/gerne/crime/" to "Crime | جريمة",
-        "$mainUrl/gerne/documentary/" to "Documentary | وثائقي",
-        "$mainUrl/gerne/drama/" to "Drama | دراما",
-        "$mainUrl/gerne/family/"	to "Family | عائلي",
-        "$mainUrl/gerne/fantasy/"	to "Fantasy | فنتازيا",
-        "$mainUrl/gerne/herror/" to "Herror | رعب",
-        "$mainUrl/gerne/history/" to "History | تاريخي",
-        "$mainUrl/gerne/music/" to "Music | موسيقى",
-        "$mainUrl/gerne/musical/" to "Musical | موسيقي",
-        "$mainUrl/gerne/mystery/" to "Mystery | غموض",
-        "$mainUrl/gerne/romance/" to "Romance | رومنسي",
-        "$mainUrl/gerne/sci-fi/" to "Sci-fi | خيال علمي",
-        "$mainUrl/gerne/short/" to "Short | قصير",
-        "$mainUrl/gerne/sport/" to "Sport | رياضة",
-        "$mainUrl/gerne/thriller/" to "Thriller | إثارة",
-        "$mainUrl/gerne/war/" to "War | حرب",
-        "$mainUrl/gerne/western/" to "Western | غربي",
+    // Cloudflare bypass headers
+    private val cfHeaders = mapOf(
+        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language" to "en-US,en;q=0.5",
+        "Accept-Encoding" to "gzip, deflate, br",
+        "DNT" to "1",
+        "Connection" to "keep-alive",
+        "Upgrade-Insecure-Requests" to "1",
+        "Sec-Fetch-Dest" to "document",
+        "Sec-Fetch-Mode" to "navigate",
+        "Sec-Fetch-Site" to "none",
+        "Cache-Control" to "max-age=0"
     )
 
-    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+    // Best selectors from analysis: .series (24), .post (9), article (34)
+    override val mainPage = mainPageOf(
+        "$mainUrl" to "الأفلام المضافة حديثاً",
+        "$mainUrl/category/%d8%a3%d9%81%d9%84%d8%a7%d9%85-2025/" to "أفلام 2025",
+        "$mainUrl/category/%d8%a3%d9%81%d9%84%d8%a7%d9%85-2024/" to "أفلام 2024", 
+        "$mainUrl/category/%d8%a3%d9%81%d9%84%d8%a7%d9%85-2023/" to "أفلام 2023",
+        "$mainUrl/category/%d8%a3%d9%81%d9%84%d8%a7%d9%85-2022/" to "أفلام 2022",
+        "$mainUrl/category/%d8%a3%d9%81%d9%84%d8%a7%d9%85-2021/" to "أفلام 2021",
+        "$mainUrl/category/%d8%a3%d9%81%d9%84%d8%a7%d9%85-%d8%a3%d8%ac%d9%86%d8%a8%d9%8a%d8%a9/" to "أفلام أجنبية",
+        "$mainUrl/category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%a3%d8%ac%d9%86%d8%a8%d9%8a%d8%a9-%d9%85%d8%aa%d8%b1%d8%ac%d9%85%d8%a9-e/" to "مسلسلات أجنبية",
+        "$mainUrl/category/%d9%82%d8%a7%d8%a6%d9%85%d8%a9-%d8%a7%d9%84%d8%a3%d9%86%d9%85%d9%8a-b/%d8%a3%d9%81%d9%84%d8%a7%d9%85-%d8%a3%d9%86%d9%85%d9%8a/" to "أفلام أنمي",
+        "$mainUrl/category/imdb-top-250/" to "IMDb Top 250",
+        "$mainUrl/category/%d8%a3%d9%81%d9%84%d8%a7%d9%85-%d8%a2%d8%b3%d9%8a%d9%88%d9%8a%d8%a9-%d9%85%d8%aa%d8%b1%d8%ac%d9%85%d8%a9/" to "أفلام آسيوية"
+    )
+
+    override suspend fun getMainPage(
+        page: Int,
+        request: MainPageRequest
+    ): HomePageResponse {
         val url = if (page > 1) "${request.data}page/$page/" else request.data
-        val document = app.get(url).document
+        val document = app.get(url, headers = cfHeaders).document
         
-        val home = document.select("article.poster, article").mapNotNull {
-            it.toSearchResponse()
+        // Use best selectors from analysis: .series (24 items), article (34 items)
+        val home = document.select(".series, article, .post").mapNotNull { element ->
+            val title = element.select("h2, h3").text()
+            val href = element.select("a").attr("href")
+            val poster = element.select("img").attr("src")
+            
+            if (title.isNotBlank() && href.isNotBlank()) {
+                newMovieSearchResponse(title, href, TvType.Movie) {
+                    this.posterUrl = poster
+                }
+            } else null
         }
         return newHomePageResponse(request.name, home)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        if (query.length < 3) return emptyList()
-        val encodedQuery = URLEncoder.encode(query, "UTF-8")
-        val doc = app.get("$mainUrl/?s=$encodedQuery").document
+        val document = app.get("$mainUrl/?s=$query", headers = cfHeaders).document
         
-        return doc.select("article.poster, article").mapNotNull {
-            it.toSearchResponse()
+        return document.select(".series, article, .post").mapNotNull { element ->
+            val title = element.select("h2, h3").text()
+            val href = element.select("a").attr("href")
+            val poster = element.select("img").attr("src")
+            
+            if (title.isNotBlank() && href.isNotBlank()) {
+                newMovieSearchResponse(title, href, TvType.Movie) {
+                    this.posterUrl = poster
+                }
+            } else null
         }
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val doc = app.get(url).document
+        val document = app.get(url, headers = cfHeaders).document
         
-        val title = doc.selectFirst("h1.entry-title, h1")?.text()?.cleanTitle() ?: "Unknown Title"
-
-        // FIXED: Use the same poster from main page instead of trying to extract from movie page
-        val posterUrl = posterCache[url] ?: ""
-        
-        val synopsis = doc.selectFirst(".entry-content, .post-content")?.text() ?: ""
-        val year = doc.selectFirst(".year, .labels .year")?.text()?.getIntFromText()
-        
-        val tags = doc.select(".gerne a, .genre a").map { it.text() }
-        
-        val recommendations = doc.select(".related-posts article, .simple-related-posts article").mapNotNull { element ->
-            element.toSearchResponse()
-        }
-        
-        val youtubeTrailer = doc.selectFirst("iframe[src*='youtube'], iframe[src*='youtu.be']")?.attr("src") ?: ""
+        val title = document.selectFirst("h1")?.text() ?: "Unknown"
+        val poster = document.selectFirst("img")?.attr("src") ?: ""
+        val description = document.selectFirst(".content, .entry-content")?.text() ?: ""
         
         return newMovieLoadResponse(title, url, TvType.Movie, url) {
-            this.posterUrl = posterUrl
-            this.recommendations = recommendations
-            this.plot = synopsis
-            this.tags = tags
-            this.year = year
-            addTrailer(youtubeTrailer)
+            this.posterUrl = poster
+            this.plot = description
         }
     }
 
@@ -127,46 +101,58 @@ class Fushaar : MainAPI() {
     ): Boolean {
         var foundLinks = false
         
-        try {
-            val doc = app.get(data).document
-            
-            // Try direct video links first
-            doc.select("a[href*='.mp4'], a[href*='.m3u8']").forEach { element ->
-                val url = element.attr("href")
-                if (url.isNotBlank()) {
-                    foundLinks = true
-                    loadExtractor(url, data, subtitleCallback, callback)
-                }
+        // METHOD 1: Extract iframes with Cloudflare headers
+        val mainDoc = app.get(data, headers = cfHeaders).document
+        val iframes = mainDoc.select("iframe")
+        
+        iframes.forEach { iframe ->
+            val iframeUrl = iframe.attr("src")
+            if (iframeUrl.isNotBlank()) {
+                foundLinks = true
+                loadExtractor(iframeUrl, data, subtitleCallback, callback)
             }
+        }
+        
+        // METHOD 2: Try with GET parameters that worked in analysis
+        if (!foundLinks) {
+            val workingParams = listOf(
+                mapOf("view" to "1"),
+                mapOf("load" to "video"), 
+                mapOf("play" to "1"),
+                mapOf("player" to "1")
+            )
             
-            // Try iframe embeds
-            doc.select("iframe").forEach { iframe ->
-                val src = iframe.attr("src")
-                if (src.isNotBlank()) {
-                    foundLinks = true
-                    loadExtractor(src, data, subtitleCallback, callback)
-                }
-            }
-            
-            // If no links found, try POST request
-            if (!foundLinks) {
+            for (params in workingParams) {
                 try {
-                    val postDoc = app.post(data, data = mapOf("view" to "1")).document
-                    
-                    postDoc.select("a[href*='.mp4'], a[href*='.m3u8']").forEach { element ->
-                        val url = element.attr("href")
-                        if (url.isNotBlank()) {
+                    val paramDoc = app.get(data, params = params, headers = cfHeaders).document
+                    paramDoc.select("iframe").forEach { iframe ->
+                        val iframeUrl = iframe.attr("src")
+                        if (iframeUrl.isNotBlank()) {
                             foundLinks = true
-                            loadExtractor(url, data, subtitleCallback, callback)
+                            loadExtractor(iframeUrl, data, subtitleCallback, callback)
                         }
                     }
+                    if (foundLinks) break
                 } catch (e: Exception) {
-                    // POST failed, continue
+                    // Continue to next method
                 }
             }
-            
-        } catch (e: Exception) {
-            // Fallback if everything fails
+        }
+        
+        // METHOD 3: Try POST with Cloudflare headers
+        if (!foundLinks) {
+            try {
+                val postDoc = app.post(data, data = mapOf("view" to "1"), headers = cfHeaders).document
+                postDoc.select("iframe").forEach { iframe ->
+                    val iframeUrl = iframe.attr("src")
+                    if (iframeUrl.isNotBlank()) {
+                        foundLinks = true
+                        loadExtractor(iframeUrl, data, subtitleCallback, callback)
+                    }
+                }
+            } catch (e: Exception) {
+                // POST failed, continue
+            }
         }
         
         return foundLinks
