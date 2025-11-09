@@ -1,7 +1,9 @@
 package com.moviztime
 
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.utils.*
+import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.SubtitleFile
+import com.lagradost.cloudstream3.utils.loadExtractor
 import org.jsoup.nodes.Element
 
 class MovizTime : MainAPI() {
@@ -24,29 +26,7 @@ class MovizTime : MainAPI() {
         val doc = app.get(url).document
 
         val items = doc.select("article.pinbox, div.pinbox").mapNotNull {
-            val linkElement = it.selectFirst("a[href]") ?: return@mapNotNull null
-            val href = linkElement.attr("href").toAbsolute(mainUrl)
-            val title = linkElement.attr("title").ifBlank { linkElement.text() }
-
-            // handle all possible image attributes
-            val img = it.selectFirst("img")?.let { imgEl ->
-                imgEl.attr("src")
-                    .ifBlank { imgEl.attr("data-src") }
-                    .ifBlank { imgEl.attr("data-lazy-src") }
-                    .toAbsolute(mainUrl)
-            }
-
-            val quality = it.selectFirst("._quality_tag")?.text()
-            val type = when {
-                href.contains("/anime/") -> TvType.Anime
-                href.contains("/series/") -> TvType.TvSeries
-                else -> TvType.Movie
-            }
-
-            newMovieSearchResponse(title, href, type) {
-                this.posterUrl = img
-                this.quality = getQualityFromString(quality)
-            }
+            it.toSearchResult()
         }
 
         return newHomePageResponse(request.name, items)
@@ -120,15 +100,24 @@ class MovizTime : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         val doc = app.get(data).document
+        var foundLinks = false
 
         // Extract download or streaming links
-        doc.select("a[href*='.mp4'], a[href*='.m3u8'], a[href*='vid'], iframe[src]").apmap { el ->
+        doc.select("a[href*='.mp4'], a[href*='.m3u8'], a[href*='vid'], iframe[src]").forEach { el ->
             val link = (el.attr("href").ifBlank { el.attr("src") }).toAbsolute(mainUrl)
             if (link.isNotBlank()) {
+                foundLinks = true
                 loadExtractor(link, data, subtitleCallback, callback)
             }
         }
 
-        return true
+        return foundLinks
+    }
+
+    // ----------------------------- UTILITIES -----------------------------
+    private fun String.toAbsolute(baseUrl: String): String {
+        return if (this.startsWith("http")) this
+        else if (this.startsWith("/")) "$baseUrl$this"
+        else "$baseUrl/$this"
     }
 }
