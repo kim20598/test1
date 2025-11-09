@@ -26,7 +26,9 @@ class MovizTime : MainAPI() {
         "$mainUrl/category/%d8%a3%d9%81%d9%84%d8%a7%d9%85-2022/" to "أفلام 2022",
         "$mainUrl/category/%d8%a3%d9%81%d9%84%d8%a7%d9%85-2021/" to "أفلام 2021",
         "$mainUrl/category/%d8%a3%d9%81%d9%84%d8%a7%d9%85-%d8%a3%d8%ac%d9%86%d8%a8%d9%8a%d8%a9/" to "أفلام أجنبية",
-        "$mainUrl/category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%a3%d8%ac%d9%86%d8%a8%d9%8a%d8%a9-%d9%85%d8%aa%d8%b1%d8%ac%d9%85%d8%a9-e/" to "مسلسلات أجنبية"
+        "$mainUrl/category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%a3%d8%ac%d9%86%d8%a8%d9%8a%d8%a9-%d9%85%d8%aa%d8%b1%d8%ac%d9%85%d8%a9-e/" to "مسلسلات أجنبية",
+        "$mainUrl/category/%d9%82%d8%a7%d8%a6%d9%85%d8%a9-%d8%a7%d9%84%d8%a3%d9%86%d9%85%d9%8a-b/%d8%a3%d9%81%d9%84%d8%a7%d9%85-%d8%a3%d9%86%d9%85%d9%8a/" to "أفلام أنمي",
+        "$mainUrl/category/imdb-top-250/" to "IMDb Top 250"
     )
 
     override suspend fun getMainPage(
@@ -110,16 +112,42 @@ class MovizTime : MainAPI() {
         
         val mainDoc = app.get(data, headers = cfHeaders).document
         
-        // METHOD 1: Iframe extraction
-        mainDoc.select("iframe").forEach { iframe ->
-            val iframeUrl = iframe.attr("src")
+        // METHOD 1: Extract iframes from server tabs
+        mainDoc.select("#servers_tabs iframe, .single_tab iframe").forEach { iframe ->
+            val iframeUrl = iframe.attr("data-src").ifBlank {
+                iframe.attr("src")
+            }
             if (iframeUrl.isNotBlank()) {
                 foundLinks = true
                 loadExtractor(iframeUrl, data, subtitleCallback, callback)
             }
         }
         
-        // METHOD 2: GET parameters
+        // METHOD 2: Try all iframes on the page
+        if (!foundLinks) {
+            mainDoc.select("iframe").forEach { iframe ->
+                val iframeUrl = iframe.attr("data-src").ifBlank {
+                    iframe.attr("src")
+                }
+                if (iframeUrl.isNotBlank()) {
+                    foundLinks = true
+                    loadExtractor(iframeUrl, data, subtitleCallback, callback)
+                }
+            }
+        }
+        
+        // METHOD 3: Try download links
+        if (!foundLinks) {
+            mainDoc.select("a.download_btn, a[href*='download']").forEach { link ->
+                val url = link.attr("href")
+                if (url.isNotBlank()) {
+                    foundLinks = true
+                    loadExtractor(url, data, subtitleCallback, callback)
+                }
+            }
+        }
+        
+        // METHOD 4: GET parameters
         if (!foundLinks) {
             val workingParams = listOf(
                 mapOf("view" to "1"),
@@ -130,7 +158,9 @@ class MovizTime : MainAPI() {
                 try {
                     val paramDoc = app.get(data, params = params, headers = cfHeaders).document
                     paramDoc.select("iframe").forEach { iframe ->
-                        val iframeUrl = iframe.attr("src")
+                        val iframeUrl = iframe.attr("data-src").ifBlank {
+                            iframe.attr("src")
+                        }
                         if (iframeUrl.isNotBlank()) {
                             foundLinks = true
                             loadExtractor(iframeUrl, data, subtitleCallback, callback)
@@ -138,18 +168,7 @@ class MovizTime : MainAPI() {
                     }
                     if (foundLinks) break
                 } catch (e: Exception) {
-                    // Continue
-                }
-            }
-        }
-        
-        // METHOD 3: Direct video links
-        if (!foundLinks) {
-            mainDoc.select("a[href*='.mp4'], a[href*='.m3u8']").forEach { link ->
-                val url = link.attr("href")
-                if (url.isNotBlank()) {
-                    foundLinks = true
-                    loadExtractor(url, data, subtitleCallback, callback)
+                    // Continue to next parameter
                 }
             }
         }
