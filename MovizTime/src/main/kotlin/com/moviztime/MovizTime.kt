@@ -13,7 +13,7 @@ class MovizTime : MainAPI() {
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime)
     override val hasDownloadSupport = true
 
-    // ----------------------------- MAIN PAGE -----------------------------hakim
+    // ----------------------------- MAIN PAGE -----------------------------
     override val mainPage = mainPageOf(
         "$mainUrl/category/movies/page/" to "أفلام",
         "$mainUrl/category/series/page/" to "مسلسلات",
