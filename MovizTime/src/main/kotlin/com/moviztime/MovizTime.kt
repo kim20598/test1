@@ -12,7 +12,6 @@ class MovizTime : MainAPI() {
     override val hasMainPage = true
     override val supportedTypes = setOf(TvType.Movie)
 
-    // Simple Cloudflare headers
     private val cfHeaders = mapOf(
         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
@@ -31,6 +30,29 @@ class MovizTime : MainAPI() {
         "$mainUrl/category/imdb-top-250/" to "IMDb Top 250"
     )
 
+    // Enhanced poster extraction function
+    private fun extractPosterUrl(element: Element): String {
+        // Priority 1: Images with dimensions (likely posters)
+        var poster = element.select("img[width][height]").attr("src")
+        
+        // Priority 2: Images with common poster classes
+        if (poster.isBlank()) {
+            poster = element.select("img[class*='poster'], img[class*='movie']").attr("src")
+        }
+        
+        // Priority 3: Any image in the element
+        if (poster.isBlank()) {
+            poster = element.select("img").attr("src")
+        }
+        
+        // Convert to absolute URL if needed
+        if (poster.isNotBlank() && !poster.startsWith("http")) {
+            poster = if (poster.startsWith("/")) "$mainUrl$poster" else "$mainUrl/$poster"
+        }
+        
+        return poster
+    }
+
     override suspend fun getMainPage(
         page: Int,
         request: MainPageRequest
@@ -42,19 +64,12 @@ class MovizTime : MainAPI() {
             val title = element.select(".title-2, h2, h3").text().trim()
             var href = element.select("a").attr("href")
             
-            // Better poster extraction - get the main image with proper dimensions
-            var poster = element.select("img[width][height]").attr("src") // Get images with dimensions first
-            if (poster.isBlank()) {
-                poster = element.select("img").attr("src") // Fallback to any image
-            }
+            // Use enhanced poster extraction
+            val poster = extractPosterUrl(element)
             
-            // Simple URL fixes
+            // Fix href URL
             if (href.isNotBlank() && !href.startsWith("http")) {
                 href = if (href.startsWith("/")) "$mainUrl$href" else "$mainUrl/$href"
-            }
-            
-            if (poster.isNotBlank() && !poster.startsWith("http")) {
-                poster = if (poster.startsWith("/")) "$mainUrl$poster" else "$mainUrl/$poster"
             }
             
             if (title.isNotBlank() && href.isNotBlank() && !href.contains("/category/")) {
@@ -73,18 +88,10 @@ class MovizTime : MainAPI() {
             val title = element.select(".title-2, h2, h3").text().trim()
             var href = element.select("a").attr("href")
             
-            // Better poster extraction
-            var poster = element.select("img[width][height]").attr("src")
-            if (poster.isBlank()) {
-                poster = element.select("img").attr("src")
-            }
+            val poster = extractPosterUrl(element)
             
             if (href.isNotBlank() && !href.startsWith("http")) {
                 href = if (href.startsWith("/")) "$mainUrl$href" else "$mainUrl/$href"
-            }
-            
-            if (poster.isNotBlank() && !poster.startsWith("http")) {
-                poster = if (poster.startsWith("/")) "$mainUrl$poster" else "$mainUrl/$poster"
             }
             
             if (title.isNotBlank() && href.isNotBlank() && !href.contains("/category/")) {
@@ -100,15 +107,10 @@ class MovizTime : MainAPI() {
         
         val title = document.selectFirst("h1")?.text()?.trim() ?: "Unknown"
         
-        // Better poster extraction for movie page
-        var poster = document.selectFirst("img[width][height]")?.attr("src") ?: 
-                    document.selectFirst("img")?.attr("src") ?: ""
+        // Enhanced poster extraction for movie page
+        val poster = extractPosterUrl(document)
         
         val description = document.selectFirst(".content, .entry-content")?.text()?.trim() ?: ""
-        
-        if (poster.isNotBlank() && !poster.startsWith("http")) {
-            poster = if (poster.startsWith("/")) "$mainUrl$poster" else "$mainUrl/$poster"
-        }
         
         return newMovieLoadResponse(title, url, TvType.Movie, url) {
             this.posterUrl = poster
