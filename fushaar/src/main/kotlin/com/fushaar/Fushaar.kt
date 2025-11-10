@@ -113,7 +113,7 @@ class FushaarProvider : MainAPI() {
         }
     }
 
-    // ✅ ENHANCED: Load links implementation with MULTIPLE extraction methods
+    // ✅ FIXED: Load links implementation - SIMPLIFIED & SAFE
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -127,24 +127,24 @@ class FushaarProvider : MainAPI() {
             // 🎯 METHOD 1: Direct MP4 links (from analysis)
             document.select("a[href*='.mp4']").forEach { link ->
                 val url = link.attr("href")
-                val qualityText = link.text().lowercase()
-                
                 if (url.isNotBlank()) {
-                    val quality = when {
-                        "1080" in qualityText || "fullhd" in qualityText -> Qualities.FullHDP.value
-                        "480" in qualityText || "web" in qualityText -> Qualities.480P.value
-                        "240" in qualityText || "sd" in qualityText -> Qualities.240P.value
-                        else -> Qualities.Unknown.value
+                    // ✅ FIXED: Use simple quality detection without breaking API
+                    val qualityName = when {
+                        "1080" in link.text().lowercase() || "fullhd" in link.text().lowercase() -> "1080p"
+                        "480" in link.text().lowercase() || "web" in link.text().lowercase() -> "480p" 
+                        "240" in link.text().lowercase() || "sd" in link.text().lowercase() -> "240p"
+                        else -> "Unknown"
                     }
                     
+                    // ✅ FIXED: Use safe ExtractorLink creation
                     callback.invoke(
                         ExtractorLink(
                             name,
-                            "$name - Direct",
+                            "$name - $qualityName",
                             url,
                             "$mainUrl/",
-                            quality,
-                            false
+                            getQualityFromName(qualityName),
+                            url.contains(".m3u8")
                         )
                     )
                     foundLinks = true
@@ -156,36 +156,43 @@ class FushaarProvider : MainAPI() {
                 val src = iframe.attr("src")
                 if (src.isNotBlank()) {
                     foundLinks = true
-                    // CloudStream will automatically handle these extractors:
-                    // - voe.sx (supported)
-                    // - uqload.com (supported) 
-                    // - YouTube (supported)
-                    // - Custom players via loadExtractor
+                    // CloudStream will automatically handle these extractors
                     loadExtractor(src, data, subtitleCallback, callback)
                 }
             }
             
-            // 🎯 METHOD 3: Player.php embeds (site-specific)
-            document.select("iframe[src*='player.php']").forEach { iframe ->
-                val src = iframe.attr("src")
-                if (src.isNotBlank()) {
-                    foundLinks = true
-                    loadExtractor(src, data, subtitleCallback, callback)
-                }
-            }
-            
-            // 🎯 METHOD 4: Download service links
-            document.select("a[href*='fushaar.link'], a[href*='uptobox.com']").forEach { link ->
+            // 🎯 METHOD 3: HLS streams
+            document.select("a[href*='.m3u8']").forEach { link ->
                 val url = link.attr("href")
                 if (url.isNotBlank()) {
+                    callback.invoke(
+                        ExtractorLink(
+                            name,
+                            "$name - HLS",
+                            url,
+                            "$mainUrl/",
+                            Qualities.Unknown.value,
+                            true
+                        )
+                    )
                     foundLinks = true
-                    loadExtractor(url, data, subtitleCallback, callback)
                 }
             }
             
             foundLinks
         } catch (e: Exception) {
             false
+        }
+    }
+    
+    // ✅ FIXED: Safe quality helper function
+    private fun getQualityFromName(qualityName: String): Int {
+        return when (qualityName.lowercase()) {
+            "1080p", "fullhd" -> Qualities.FullHDP.value
+            "720p", "hd" -> Qualities.720P.value
+            "480p", "web" -> Qualities.480P.value
+            "360p", "240p", "sd" -> Qualities.240P.value
+            else -> Qualities.Unknown.value
         }
     }
 }
