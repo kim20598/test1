@@ -3,6 +3,8 @@ package com.fajrshow
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
+import com.lagradost.cloudstream3.utils.Qualities
+import org.jsoup.nodes.Element
 
 class Fajrshow : MainAPI() {
     override var mainUrl = "https://fajer.show"
@@ -12,29 +14,47 @@ class Fajrshow : MainAPI() {
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
     override var lang = "ar"
 
-    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+    private fun Element.toSearchResponse(): SearchResponse? {
         return try {
-            // Try to load the main page normally first
-            val document = app.get(mainUrl).document
+            val title = select("h3").text().trim()
+            val href = select("a").attr("href")
+            val posterUrl = select("img").attr("src")
             
-            // If we get here, Cloudflare might be bypassed
-            // Try to extract some basic content
-            val home = document.select("a[href*='/movie/'], a[href*='/tv/']").mapNotNull { element ->
-                val title = element.text().trim()
-                val href = element.attr("href")
-                if (title.isNotBlank() && href.isNotBlank()) {
-                    newMovieSearchResponse(title, href, TvType.Movie) {
-                        this.posterUrl = ""
-                    }
-                } else {
-                    null
+            if (title.isBlank() || href.isBlank()) return null
+            
+            val type = if (href.contains("/tvshows/")) TvType.TvSeries else TvType.Movie
+            
+            if (type == TvType.TvSeries) {
+                newTvSeriesSearchResponse(title, href, type) {
+                    this.posterUrl = posterUrl
+                }
+            } else {
+                newMovieSearchResponse(title, href, type) {
+                    this.posterUrl = posterUrl
                 }
             }
-            
-            newHomePageResponse("Fajrshow", home)
         } catch (e: Exception) {
-            // If normal request fails, return empty and let WebView handle it
-            newHomePageResponse("Protected Site", emptyList())
+            null
+        }
+    }
+
+    override val mainPage = mainPageOf(
+        "$mainUrl/movies/" to "أفلام",
+        "$mainUrl/tvshows/" to "مسلسلات"
+    )
+
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+        return try {
+            val url = if (page > 1) "${request.data}page/$page/" else request.data
+            val document = app.get(url).document
+            
+            val home = document.select("article.item").mapNotNull { element ->
+                element.toSearchResponse()
+            }
+            
+            newHomePageResponse(request.name, home)
+        } catch (e: Exception) {
+            newHomePageResponse(request.name, emptyList())
         }
     }
 
@@ -43,16 +63,8 @@ class Fajrshow : MainAPI() {
             if (query.length < 3) return emptyList()
             val document = app.get("$mainUrl/?s=$query").document
             
-            document.select("a[href*='/movie/'], a[href*='/tv/']").mapNotNull { element ->
-                val title = element.text().trim()
-                val href = element.attr("href")
-                if (title.isNotBlank() && href.isNotBlank()) {
-                    newMovieSearchResponse(title, href, TvType.Movie) {
-                        this.posterUrl = ""
-                    }
-                } else {
-                    null
-                }
+            document.select("article.item").mapNotNull { element ->
+                element.toSearchResponse()
             }
         } catch (e: Exception) {
             emptyList()
@@ -64,15 +76,26 @@ class Fajrshow : MainAPI() {
             val document = app.get(url).document
             
             val title = document.selectFirst("h1")?.text()?.trim() ?: "Unknown Title"
+            val posterUrl = document.selectFirst("img")?.attr("src") ?: ""
+            val description = document.selectFirst(".entry-content")?.text()?.trim() ?: ""
             
-            newMovieLoadResponse(title, url, TvType.Movie, url) {
-                this.posterUrl = ""
-                this.plot = "Content loaded from Fajrshow"
+            val isTvSeries = url.contains("/tvshows/")
+            
+            if (isTvSeries) {
+                newTvSeriesLoadResponse(title, url, TvType.TvSeries, emptyList()) {
+                    this.posterUrl = posterUrl
+                    this.plot = description
+                }
+            } else {
+                newMovieLoadResponse(title, url, TvType.Movie, url) {
+                    this.posterUrl = posterUrl
+                    this.plot = description
+                }
             }
         } catch (e: Exception) {
-            newMovieLoadResponse("Protected Content", url, TvType.Movie, url) {
+            newMovieLoadResponse("Error", url, TvType.Movie, url) {
                 this.posterUrl = ""
-                this.plot = "Site is protected. Content will load in WebView."
+                this.plot = "Failed to load content"
             }
         }
     }
@@ -84,9 +107,18 @@ class Fajrshow : MainAPI() {
         callback: (ExtractorLink) -> Unit
     ): Boolean {
         return try {
-            // Let Cloud Stream's extractor system handle the links
-            // With usesWebView = true, it will use WebView for protected pages
-            loadExtractor(data, data, subtitleCallback, callback)
+            var foundLinks = false
+            val document = app.get(data).document
+            
+            document.select("iframe").forEach { iframe ->
+                val src = iframe.attr("src")
+                if (src.isNotBlank()) {
+                    foundLinks = true
+                    loadExtractor(src, data, subtitleCallback, callback)
+                }
+            }
+            
+            foundLinks
         } catch (e: Exception) {
             false
         }
