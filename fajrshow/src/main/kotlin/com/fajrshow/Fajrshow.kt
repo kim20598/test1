@@ -14,8 +14,8 @@ class Fajrshow : MainAPI() {
     override val hasMainPage = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
-    // Simple headers to help with requests
-    override fun getHeaders(): Map<String, String> = mapOf(
+    // Simple headers helper function (NOT override)
+    private fun getCustomHeaders(): Map<String, String> = mapOf(
         "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language" to "ar,en-US;q=0.7,en;q=0.3",
         "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
@@ -70,7 +70,7 @@ class Fajrshow : MainAPI() {
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         return try {
             val url = if (page > 1) "${request.data}page/$page/" else request.data
-            val document = app.get(url, headers = getHeaders()).document
+            val document = app.get(url, headers = getCustomHeaders()).document
             
             val home = document.select("article.item").mapNotNull { element ->
                 try {
@@ -94,7 +94,7 @@ class Fajrshow : MainAPI() {
         return try {
             if (query.length < 3) return emptyList()
             val encodedQuery = URLEncoder.encode(query, "UTF-8")
-            val doc = app.get("$mainUrl/?s=$encodedQuery", headers = getHeaders()).document
+            val doc = app.get("$mainUrl/?s=$encodedQuery", headers = getCustomHeaders()).document
             
             doc.select("article.item").mapNotNull { element ->
                 try {
@@ -115,7 +115,7 @@ class Fajrshow : MainAPI() {
 
     override suspend fun load(url: String): LoadResponse {
         return try {
-            val doc = app.get(url, headers = getHeaders()).document
+            val doc = app.get(url, headers = getCustomHeaders()).document
             
             val title = doc.selectFirst("h1")?.text()?.cleanTitle() ?: "Unknown Title"
             val posterUrl = doc.selectFirst("img")?.attr("src") ?: ""
@@ -154,7 +154,7 @@ class Fajrshow : MainAPI() {
     ): Boolean {
         return try {
             var foundLinks = false
-            val doc = app.get(data, headers = getHeaders()).document
+            val doc = app.get(data, headers = getCustomHeaders()).document
             
             doc.select("iframe").forEach { iframe ->
                 val src = iframe.attr("src")
