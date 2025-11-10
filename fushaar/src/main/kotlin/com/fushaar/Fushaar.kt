@@ -7,7 +7,7 @@ import com.lagradost.cloudstream3.utils.loadExtractor
 import org.jsoup.nodes.Element
 import java.net.URLEncoder
 
-class Fushaar : MainAPI() {
+class FushaarProvider : MainAPI() {
     override var mainUrl = "https://fushaar.com"
     override var name = "Fushaar"
     override val usesWebView = false
@@ -17,7 +17,7 @@ class Fushaar : MainAPI() {
     override var lang = "ar"
 
     // Custom selectors for fushaar.com
-    private val containerSelector = ".moviesList, .movie, .item, .post"
+    private val containerSelector = ".moviesList, .movie, .item, .post, .film"
     private val titleSelector = ".title, h2, h3, a"
     private val posterSelector = "img"
     private val linkSelector = "a"
@@ -200,11 +200,11 @@ class Fushaar : MainAPI() {
                 }
             }
             
-            // Extract from video players
+            // Extract from video players - FIXED: Using newExtractorLink
             document.select("video source").forEach { source ->
                 val src = source.attr("src").takeIf { it.isNotBlank() } ?: return@forEach
                 callback.invoke(
-                    ExtractorLink(
+                    newExtractorLink(
                         name,
                         "Direct Video",
                         src,
