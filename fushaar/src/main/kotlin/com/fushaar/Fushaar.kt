@@ -3,18 +3,18 @@ package com.fushaar
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.ExtractorLink
+import com.lagradost.cloudstream3.utils.Qualities
 import com.lagradost.cloudstream3.utils.loadExtractor
 import org.jsoup.nodes.Element
 import java.net.URLEncoder
 
 class Fushaar : MainAPI() {
-    // 🔧 BASIC CONFIGURATION
     override var lang = "ar"
     override var mainUrl = "https://fushaar.com"
     override var name = "Fushaar"
     override val usesWebView = false
     override val hasMainPage = true
-    override val supportedTypes = setOf(TvType.TvSeries, TvType.Movie)
+    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
     // 🎯 UTILITY FUNCTIONS
     private fun String.getIntFromText(): Int? {
@@ -25,20 +25,16 @@ class Fushaar : MainAPI() {
         return this.replace("مشاهدة|فيلم|مسلسل|مترجم|كامل|اونلاين|برنامج".toRegex(), "").trim()
     }
 
-    // 🖼️ SEARCH RESPONSE BUILDER
+    // 🖼️ SEARCH RESPONSE BUILDER - OPTIMIZED FOR FUSHAAR
     private fun Element.toSearchResponse(): SearchResponse {
-        val title = select(".post-title, h2, h3, .title").text().cleanTitle()
+        val title = select("h2, h3, .post-title").text().cleanTitle()
         val posterUrl = select("img").attr("src")
         val href = select("a").attr("href")
         
         // Determine content type based on URL structure
         val tvType = when {
-            href.contains("/movie/", true) || 
-            href.contains("/فيلم/", true) -> TvType.Movie
-            href.contains("/series/", true) || 
-            href.contains("/مسلسل/", true) || 
-            href.contains("/مسلسلات/", true) -> TvType.TvSeries
-            else -> TvType.Movie // Default fallback
+            href.contains("/movie/", true) -> TvType.Movie
+            else -> TvType.TvSeries // Default to series for other content
         }
         
         return newMovieSearchResponse(title, href, tvType) {
@@ -46,12 +42,12 @@ class Fushaar : MainAPI() {
         }
     }
 
-    // 🏠 MAIN PAGE SECTIONS
+    // 🏠 MAIN PAGE SECTIONS - OPTIMIZED FOR FUSHAAR
     override val mainPage = mainPageOf(
-        "$mainUrl/movies/" to "أفلام",
-        "$mainUrl/series/" to "مسلسلات", 
-        "$mainUrl/trending/" to "الأكثر مشاهدة",
-        "$mainUrl/latest/" to "أحدث الإضافات"
+        "$mainUrl/" to "أحدث المحتوى",
+        "$mainUrl/movies/" to "الأفلام",
+        "$mainUrl/series/" to "المسلسلات",
+        "$mainUrl/trending/" to "الأكثر مشاهدة"
     )
 
     // 📄 MAIN PAGE LOADER
@@ -59,7 +55,7 @@ class Fushaar : MainAPI() {
         val url = if (page > 1) "${request.data}page/$page/" else request.data
         val document = app.get(url).document
         
-        val home = document.select(".movie, .post, article, .item").mapNotNull {
+        val home = document.select("article").mapNotNull {
             it.toSearchResponse()
         }
         return newHomePageResponse(request.name, home)
@@ -72,28 +68,28 @@ class Fushaar : MainAPI() {
         val encodedQuery = URLEncoder.encode(query, "UTF-8")
         val doc = app.get("$mainUrl/?s=$encodedQuery").document
         
-        return doc.select(".movie, .post, article, .item").mapNotNull {
+        return doc.select("article").mapNotNull {
             it.toSearchResponse()
         }
     }
 
-    // 📺 LOAD DETAILED CONTENT
+    // 📺 LOAD DETAILED CONTENT - OPTIMIZED FOR FUSHAAR
     override suspend fun load(url: String): LoadResponse {
         val doc = app.get(url).document
         
-        val title = doc.select("h1, .entry-title, .title").text().cleanTitle()
+        val title = doc.selectFirst("h1, .entry-title")?.text()?.cleanTitle() ?: "Unknown Title"
         
         // Determine if movie or series
-        val isMovie = !url.contains("/series/|/مسلسل/|/مسلسلات/".toRegex())
+        val isMovie = url.contains("/movie/", true)
 
-        val posterUrl = doc.select(".post-thumbnail img, .entry-content img, .wp-post-image").attr("src")
+        val posterUrl = doc.selectFirst(".post-thumbnail img, .wp-post-image")?.attr("src") ?: ""
         
-        val synopsis = doc.select(".entry-content, .post-content, .description").text()
+        val synopsis = doc.select(".entry-content, .post-content").text()
         
         val year = doc.select(".year, .date").text().getIntFromText()
-        val tags = doc.select(".tags, .categories a, .genre a").map { it.text() }
+        val tags = doc.select(".tags a, .categories a, .genre a").map { it.text() }
         
-        val recommendations = doc.select(".related-posts .post, .similar .item").mapNotNull { element ->
+        val recommendations = doc.select(".related-posts article, .similar article").mapNotNull { element ->
             element.toSearchResponse()
         }
         
@@ -113,35 +109,11 @@ class Fushaar : MainAPI() {
             // 📺 TV SERIES LOAD RESPONSE
             val episodes = arrayListOf<Episode>()
             
-            // Look for season lists
-            val seasonList = doc.select(".seasons a, .season-list a, .tabs a").reversed()
-            
-            if(seasonList.isNotEmpty()) {
-                // Multiple seasons
-                seasonList.forEachIndexed { index, season ->
-                    val seasonUrl = season.attr("href")
-                    if (seasonUrl.isNotBlank()) {
-                        try {
-                            val seasonDoc = app.get(seasonUrl).document
-                            // Extract episodes from season page
-                            seasonDoc.select(".episodes a, .episode-list a, .episode-item a").forEach {
-                                episodes.add(newEpisode(it.attr("href")) {
-                                    name = it.attr("title").ifBlank { it.text().cleanTitle() }
-                                    this.season = index + 1
-                                    episode = it.text().getIntFromText() ?: 1
-                                })
-                            }
-                        } catch (e: Exception) {
-                            // If season page fails, try to extract from current page
-                        }
-                    }
-                }
-            }
-            
-            // If no seasons found or no episodes extracted, try direct episode extraction
-            if (episodes.isEmpty()) {
-                doc.select(".episodes a, .episode-list a, .episode-item a").forEach {
-                    episodes.add(newEpisode(it.attr("href")) {
+            // Extract episodes from series pages
+            doc.select(".episodes a, .episode-list a").forEach {
+                val episodeUrl = it.attr("href")
+                if (episodeUrl.isNotBlank()) {
+                    episodes.add(newEpisode(episodeUrl) {
                         name = it.attr("title").ifBlank { it.text().cleanTitle() }
                         this.season = 1
                         episode = it.text().getIntFromText() ?: 1
@@ -149,7 +121,7 @@ class Fushaar : MainAPI() {
                 }
             }
             
-            // If still no episodes, create a default episode
+            // If no episodes found, create a default episode
             if (episodes.isEmpty()) {
                 episodes.add(newEpisode(url) {
                     name = "الحلقة 1"
@@ -169,7 +141,7 @@ class Fushaar : MainAPI() {
         }
     }
 
-    // 🔗 LOAD VIDEO LINKS
+    // 🔗 LOAD VIDEO LINKS - OPTIMIZED FOR FUSHAAR MEDIA SOURCES
     override suspend fun loadLinks(
         data: String, 
         isCasting: Boolean, 
@@ -181,56 +153,88 @@ class Fushaar : MainAPI() {
         try {
             val doc = app.get(data).document
             
-            // Extract from download servers
-            doc.select(".download-servers li, .servers-list li, .server-item").forEach { element ->
-                val url = element.select("a").attr("href")
-                if (url.isNotBlank() && url.contains("http")) {
+            // 🎯 METHOD 1: Direct MP4 links from Fushaar CDN (HIGH PRIORITY)
+            doc.select("a[href*='.mp4']").forEach { link ->
+                val url = link.attr("href")
+                val text = link.text().lowercase()
+                
+                if (url.isNotBlank() && url.contains("stream.fushaar.link")) {
+                    foundLinks = true
+                    
+                    // Determine quality from link text
+                    val quality = when {
+                        "1080" in text || "fullhd" in text -> Qualities.FullHDP.value
+                        "480" in text || "web" in text -> Qualities.480P.value
+                        "240" in text || "sd" in text -> Qualities.240P.value
+                        else -> Qualities.Unknown.value
+                    }
+                    
+                    callback.invoke(
+                        ExtractorLink(
+                            name,
+                            "Fushaar CDN - ${quality}p",
+                            url,
+                            mainUrl,
+                            quality,
+                            false
+                        )
+                    )
+                }
+            }
+            
+            // 🎯 METHOD 2: Embedded players (Voe.sx, Uqload, etc.)
+            doc.select("iframe").forEach { iframe ->
+                val src = iframe.attr("src")
+                if (src.isNotBlank() && !src.contains("about:blank")) {
+                    foundLinks = true
+                    loadExtractor(src, data, subtitleCallback, callback)
+                }
+            }
+            
+            // 🎯 METHOD 3: Download servers
+            doc.select("a[href*='fushaar.link/getvid'], a[href*='uptobox.com']").forEach { link ->
+                val url = link.attr("href")
+                if (url.isNotBlank()) {
                     foundLinks = true
                     loadExtractor(url, data, subtitleCallback, callback)
                 }
             }
             
-            // Extract from iframes/embeds
-            doc.select("iframe, [data-src], .video-frame").forEach { element ->
-                val iframeUrl = element.attr("src").ifBlank { element.attr("data-src") }
-                if (iframeUrl.isNotBlank() && iframeUrl.contains("http")) {
+            // 🎯 METHOD 4: Player.php embeds
+            doc.select("iframe[src*='player.php']").forEach { iframe ->
+                val src = iframe.attr("src")
+                if (src.isNotBlank()) {
                     foundLinks = true
-                    loadExtractor(iframeUrl, data, subtitleCallback, callback)
-                }
-            }
-            
-            // Extract from video players
-            doc.select("video source").forEach { source ->
-                val videoUrl = source.attr("src")
-                if (videoUrl.isNotBlank() && videoUrl.contains("http")) {
-                    foundLinks = true
-                    loadExtractor(videoUrl, data, subtitleCallback, callback)
-                }
-            }
-            
-            // Extract from script embeds
-            doc.select("script").forEach { script ->
-                val scriptContent = script.html()
-                // Look for video URLs in scripts
-                val videoPatterns = listOf(
-                    """src:\s*["']([^"']+\.(mp4|m3u8))["']""",
-                    """file:\s*["']([^"']+\.(mp4|m3u8))["']""",
-                    """videoUrl:\s*["']([^"']+)["']"""
-                )
-                
-                videoPatterns.forEach { pattern ->
-                    Regex(pattern).findAll(scriptContent).forEach { match ->
-                        val videoUrl = match.groupValues[1]
-                        if (videoUrl.isNotBlank() && videoUrl.contains("http")) {
-                            foundLinks = true
-                            loadExtractor(videoUrl, data, subtitleCallback, callback)
+                    // Extract movie ID from player URL for direct access
+                    val movieId = Regex("""id=(\d+)""").find(src)?.groupValues?.getOrNull(1)
+                    movieId?.let { id ->
+                        // Create direct CDN links based on movie ID
+                        val qualities = listOf(
+                            "240p" to Qualities.240P.value,
+                            "480p" to Qualities.480P.value,
+                            "1080p" to Qualities.FullHDP.value
+                        )
+                        
+                        qualities.forEach { (qualityName, qualityValue) ->
+                            val cdnUrl = "https://stream.fushaar.link/movie/$id/$id${if (qualityName != "1080p") "-$qualityName" else ""}.mp4"
+                            callback.invoke(
+                                ExtractorLink(
+                                    name,
+                                    "Fushaar Direct - $qualityName",
+                                    cdnUrl,
+                                    mainUrl,
+                                    qualityValue,
+                                    false
+                                )
+                            )
                         }
                     }
                 }
             }
             
         } catch (e: Exception) {
-            // Fallback if request fails
+            // Log error but don't crash
+            println("Fushaar loadLinks error: ${e.message}")
         }
         
         return foundLinks
