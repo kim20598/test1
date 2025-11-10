@@ -5,33 +5,23 @@ import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
 import org.jsoup.nodes.Element
 
-class YourProvider : MainAPI() {
-    // 🔧 BASIC CONFIGURATION (ALWAYS REQUIRED)
+class Fushaar : MainAPI() {
     override var mainUrl = "https://fushaar.com"
-    override var name = "fushaar"
-    override val usesWebView = false // Change to true ONLY if site has Cloudflare
+    override var name = "Fushaar"
+    override val usesWebView = false
     override val hasMainPage = true
-    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries) // Choose types
-    override var lang = "en" // Change to site language
+    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
+    override var lang = "ar"
 
-    // ✅ SAFE: Custom headers helper (NOT override)
-    private fun getCustomHeaders(): Map<String, String> = mapOf(
-        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    )
-
-    // ✅ SAFE: Element to SearchResponse converter
     private fun Element.toSearchResponse(): SearchResponse? {
         return try {
-            val title = select("h3, h2, .title").firstOrNull()?.text()?.trim() ?: return null
-            val href = select("a").attr("href") ?: return null
+            val title = select("h3").text().trim()
+            val href = select("a").attr("href")
             val posterUrl = select("img").attr("src")
             
-            // Determine content type
-            val type = when {
-                href.contains("/series/") || href.contains("/tv/") -> TvType.TvSeries
-                else -> TvType.Movie
-            }
+            if (title.isBlank() || href.isBlank()) return null
+            
+            val type = if (href.contains("/series/")) TvType.TvSeries else TvType.Movie
             
             if (type == TvType.TvSeries) {
                 newTvSeriesSearchResponse(title, href, type) {
@@ -47,19 +37,17 @@ class YourProvider : MainAPI() {
         }
     }
 
-    // ✅ SAFE: Main page configuration
     override val mainPage = mainPageOf(
-        "$mainUrl/movies/" to "Latest Movies",
-        "$mainUrl/series/" to "Latest Series"
+        "$mainUrl/movies/" to "Movies",
+        "$mainUrl/series/" to "Series"
     )
 
-    // ✅ SAFE: Main page implementation
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         return try {
             val url = if (page > 1) "${request.data}page/$page/" else request.data
-            val document = app.get(url, headers = getCustomHeaders()).document
+            val document = app.get(url).document
             
-            val home = document.select(".movie, .series, article.item").mapNotNull { element ->
+            val home = document.select("article.item").mapNotNull { element ->
                 element.toSearchResponse()
             }
             
@@ -69,13 +57,12 @@ class YourProvider : MainAPI() {
         }
     }
 
-    // ✅ SAFE: Search implementation
     override suspend fun search(query: String): List<SearchResponse> {
         return try {
             if (query.length < 3) return emptyList()
-            val document = app.get("$mainUrl/search?q=$query", headers = getCustomHeaders()).document
+            val document = app.get("$mainUrl/?s=$query").document
             
-            document.select(".movie, .series, article.item").mapNotNull { element ->
+            document.select("article.item").mapNotNull { element ->
                 element.toSearchResponse()
             }
         } catch (e: Exception) {
@@ -83,16 +70,15 @@ class YourProvider : MainAPI() {
         }
     }
 
-    // ✅ SAFE: Load implementation
     override suspend fun load(url: String): LoadResponse {
         return try {
-            val document = app.get(url, headers = getCustomHeaders()).document
+            val document = app.get(url).document
             
             val title = document.selectFirst("h1")?.text()?.trim() ?: "Unknown Title"
-            val posterUrl = document.selectFirst(".poster, img")?.attr("src") ?: ""
-            val description = document.selectFirst(".plot, .description")?.text()?.trim() ?: ""
+            val posterUrl = document.selectFirst("img")?.attr("src") ?: ""
+            val description = document.selectFirst("p")?.text()?.trim() ?: ""
             
-            val isTvSeries = url.contains("/series/") || document.select(".episodes, .seasons").isNotEmpty()
+            val isTvSeries = url.contains("/series/")
             
             if (isTvSeries) {
                 newTvSeriesLoadResponse(title, url, TvType.TvSeries, emptyList()) {
@@ -113,7 +99,6 @@ class YourProvider : MainAPI() {
         }
     }
 
-    // ✅ SAFE: Load links implementation
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -122,23 +107,13 @@ class YourProvider : MainAPI() {
     ): Boolean {
         return try {
             var foundLinks = false
-            val document = app.get(data, headers = getCustomHeaders()).document
+            val document = app.get(data).document
             
-            // Method 1: Iframe embeds (most common)
             document.select("iframe").forEach { iframe ->
                 val src = iframe.attr("src")
                 if (src.isNotBlank()) {
                     foundLinks = true
                     loadExtractor(src, data, subtitleCallback, callback)
-                }
-            }
-            
-            // Method 2: Direct video links
-            document.select("a[href*='.mp4'], a[href*='.m3u8']").forEach { link ->
-                val url = link.attr("href")
-                if (url.isNotBlank()) {
-                    foundLinks = true
-                    loadExtractor(url, data, subtitleCallback, callback)
                 }
             }
             
