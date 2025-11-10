@@ -7,25 +7,28 @@ import com.lagradost.cloudstream3.utils.loadExtractor
 import org.jsoup.nodes.Element
 import java.net.URLEncoder
 
-class fushaar : MainAPI() {
+class Fushaar : MainAPI() {
     override var mainUrl = "https://fushaar.com"
-    override var name = "fushaar"
+    override var name = "Fushaar"
     override val usesWebView = false
     override val hasMainPage = true
     override val hasQuickSearch = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
-    override var lang = "en"
+    override var lang = "ar"
 
-    // Custom selectors for different sites
-    private val containerSelector = "article, .item, .movie, .series, .card, .post, .film"
-    private val titleSelector = "h1, h2, h3, .title, .name, a"
+    // Custom selectors for fushaar.com
+    private val containerSelector = ".moviesList, .movie, .item, .post"
+    private val titleSelector = ".title, h2, h3, a"
     private val posterSelector = "img"
     private val linkSelector = "a"
 
     private fun Element.toSearchResponse(): SearchResponse? {
         return try {
             val linkElement = select(linkSelector).firstOrNull() ?: return null
-            val title = linkElement.select(titleSelector).firstOrNull()?.text()?.trim() ?: return null
+            val title = linkElement.attr("title").takeIf { it.isNotBlank() } 
+                ?: linkElement.select(titleSelector).firstOrNull()?.text()?.trim() 
+                ?: return null
+            
             val href = linkElement.attr("href").takeIf { it.isNotBlank() } ?: return null
             val fullUrl = if (href.startsWith("http")) href else mainUrl + href
             
@@ -38,11 +41,14 @@ class fushaar : MainAPI() {
                 else -> ""
             }
             
+            // Determine type based on URL or content
             val type = when {
                 fullUrl.contains("/series/", true) || 
-                fullUrl.contains("/tv/", true) || 
-                fullUrl.contains("/season/", true) -> TvType.TvSeries
-                else -> TvType.Movie
+                fullUrl.contains("/مسلسل/", true) || 
+                fullUrl.contains("/مسلسلات/", true) -> TvType.TvSeries
+                fullUrl.contains("/movie/", true) || 
+                fullUrl.contains("/فيلم/", true) -> TvType.Movie
+                else -> TvType.Movie // default to movie
             }
             
             if (type == TvType.TvSeries) {
@@ -60,10 +66,10 @@ class fushaar : MainAPI() {
     }
 
     override val mainPage = mainPageOf(
-        "$mainUrl/movies/" to "Latest Movies",
-        "$mainUrl/series/" to "Latest Series",
-        "$mainUrl/popular/" to "Popular",
-        "$mainUrl/top-imdb/" to "Top IMDb"
+        "$mainUrl/movies/" to "أفلام",
+        "$mainUrl/series/" to "مسلسلات", 
+        "$mainUrl/trending/" to "الأكثر مشاهدة",
+        "$mainUrl/" to "الصفحة الرئيسية"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -116,17 +122,23 @@ class fushaar : MainAPI() {
                 }
             } ?: ""
             
-            val description = document.selectFirst(".plot, .description, .content, p")?.text()?.trim() ?: ""
+            val description = document.selectFirst(".plot, .description, .content, p")?.text()?.trim() 
+                ?: document.selectFirst("meta[name=description]")?.attr("content") ?: ""
             
+            // Determine if it's TV series or Movie
             val isTvSeries = url.contains("/series/", true) || 
-                            url.contains("/tv/", true) || 
-                            document.select(".episodes, .seasons, .episode-list").isNotEmpty()
+                            url.contains("/مسلسل/", true) ||
+                            url.contains("/مسلسلات/", true) ||
+                            document.select(".episodes, .seasons, .episode-list").isNotEmpty() ||
+                            document.text().contains("حلقة", true)
 
             if (isTvSeries) {
-                // For TV series - extract episodes
-                val episodes = document.select(".episode, .episode-item").mapNotNull { episodeElement ->
-                    val epTitle = episodeElement.select(".title, a").text().trim()
-                    val epUrl = episodeElement.select("a").attr("href").takeIf { it.isNotBlank() }
+                // Extract episodes for TV series
+                val episodes = document.select(".episode, .episode-item, a[href*='episode']").mapNotNull { episodeElement ->
+                    val epTitle = episodeElement.attr("title").takeIf { it.isNotBlank() }
+                        ?: episodeElement.select(".title, .name").text().trim()
+                        ?: "الحلقة"
+                    val epUrl = episodeElement.attr("href").takeIf { it.isNotBlank() }
                     val epNumber = episodeElement.select(".episode-number, .number").text().toIntOrNull() ?: 1
                     val seasonNumber = episodeElement.select(".season-number").text().toIntOrNull() ?: 1
                     
@@ -139,21 +151,34 @@ class fushaar : MainAPI() {
                     }
                 }.distinctBy { it.episode }
 
-                newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+                // If no episodes found, create at least one for the main page
+                val finalEpisodes = if (episodes.isEmpty()) {
+                    listOf(newEpisode(url) {
+                        this.name = "الحلقة 1"
+                        this.episode = 1
+                        this.season = 1
+                    })
+                } else {
+                    episodes
+                }
+
+                newTvSeriesLoadResponse(title, url, TvType.TvSeries, finalEpisodes) {
                     this.posterUrl = poster
                     this.plot = description
-                    this.year = null // Extract year if available
                 }
             } else {
                 // For movies
                 newMovieLoadResponse(title, url, TvType.Movie, url) {
                     this.posterUrl = poster
                     this.plot = description
-                    this.year = null // Extract year if available
                 }
             }
         } catch (e: Exception) {
-            throw ErrorLoadingException("Failed to load content: ${e.message}")
+            // Fallback to movie type if loading fails
+            newMovieLoadResponse("Error Loading", url, TvType.Movie, url) {
+                this.posterUrl = ""
+                this.plot = "Failed to load content: ${e.message}"
+            }
         }
     }
 
@@ -167,7 +192,7 @@ class fushaar : MainAPI() {
             var foundLinks = false
             val document = app.get(data, timeout = 30).document
             
-            // Extract from iframes
+            // Extract from iframes (most common)
             document.select("iframe").forEach { iframe ->
                 val src = iframe.attr("src").takeIf { it.isNotBlank() } ?: return@forEach
                 if (loadExtractor(src, data, subtitleCallback, callback)) {
@@ -181,7 +206,7 @@ class fushaar : MainAPI() {
                 callback.invoke(
                     ExtractorLink(
                         name,
-                        "Direct",
+                        "Direct Video",
                         src,
                         referer = mainUrl,
                         quality = Qualities.Unknown.value
@@ -191,10 +216,32 @@ class fushaar : MainAPI() {
             }
             
             // Extract from download links
-            document.select("a[href*='.mp4'], a[href*='.m3u8'], a[href*='stream']").forEach { link ->
+            document.select("a[href*='.mp4'], a[href*='.m3u8'], a[href*='stream'], a[href*='watch']").forEach { link ->
                 val url = link.attr("href").takeIf { it.isNotBlank() } ?: return@forEach
                 if (loadExtractor(url, data, subtitleCallback, callback)) {
                     foundLinks = true
+                }
+            }
+            
+            // Extract from embedded scripts
+            document.select("script").forEach { script ->
+                val scriptContent = script.html()
+                // Look for video URLs in scripts
+                val videoPatterns = listOf(
+                    """src:\s*["']([^"']+\.(mp4|m3u8))["']""",
+                    """file:\s*["']([^"']+\.(mp4|m3u8))["']""",
+                    """videoUrl:\s*["']([^"']+)["']"""
+                )
+                
+                videoPatterns.forEach { pattern ->
+                    Regex(pattern).findAll(scriptContent).forEach { match ->
+                        val videoUrl = match.groupValues[1]
+                        if (videoUrl.isNotBlank()) {
+                            if (loadExtractor(videoUrl, data, subtitleCallback, callback)) {
+                                foundLinks = true
+                            }
+                        }
+                    }
                 }
             }
             
