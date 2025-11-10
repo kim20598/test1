@@ -1,102 +1,35 @@
 package com.fajrshow
 
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.utils.ExtractorLink
-import com.lagradost.cloudstream3.utils.loadExtractor
-import org.jsoup.nodes.Element
 
 class Fajrshow : MainAPI() {
     override var mainUrl = "https://fajer.show"
     override var name = "Fajrshow"
     override val usesWebView = true
-    override val hasMainPage = true
+    override val hasMainPage = false  // No main page - direct browsing only
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
     override var lang = "ar"
+    override val instantLinkLoading = true
 
-    private fun Element.toSearchResponse(): SearchResponse? {
-        return try {
-            val title = select("h3").text().trim()
-            val href = select("a").attr("href")
-            val posterUrl = select("img").attr("src")
-            
-            if (title.isBlank() || href.isBlank()) return null
-            
-            val type = if (href.contains("/tvshows/")) TvType.TvSeries else TvType.Movie
-            
-            if (type == TvType.TvSeries) {
-                newTvSeriesSearchResponse(title, href, type) {
-                    this.posterUrl = posterUrl
-                }
-            } else {
-                newMovieSearchResponse(title, href, type) {
-                    this.posterUrl = posterUrl
-                }
-            }
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    override val mainPage = mainPageOf(
-        "$mainUrl/movies/" to "أفلام",
-        "$mainUrl/tvshows/" to "مسلسلات"
-    )
-
+    // 🚨 COMPLETELY BYPASS ALL AUTOMATION
+    // Let user browse directly in WebView
+    
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        return try {
-            val url = if (page > 1) "${request.data}page/$page/" else request.data
-            val document = app.get(url).document
-            
-            val home = document.select("article.item").mapNotNull { element ->
-                element.toSearchResponse()
-            }
-            
-            newHomePageResponse(request.name, home)
-        } catch (e: Exception) {
-            newHomePageResponse(request.name, emptyList())
-        }
+        return newHomePageResponse("Browse Manually", emptyList())
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        return try {
-            if (query.length < 3) return emptyList()
-            val document = app.get("$mainUrl/?s=$query").document
-            
-            document.select("article.item").mapNotNull { element ->
-                element.toSearchResponse()
+        // Direct search URL that opens in WebView
+        return listOf(
+            newMovieSearchResponse("Search: $query", "$mainUrl/?s=$query", TvType.Movie) {
+                this.posterUrl = ""
             }
-        } catch (e: Exception) {
-            emptyList()
-        }
+        )
     }
 
     override suspend fun load(url: String): LoadResponse {
-        return try {
-            val document = app.get(url).document
-            
-            val title = document.selectFirst("h1")?.text()?.trim() ?: "Unknown Title"
-            val posterUrl = document.selectFirst("img")?.attr("src") ?: ""
-            val description = document.selectFirst(".entry-content")?.text()?.trim() ?: ""
-            
-            val isTvSeries = url.contains("/tvshows/")
-            
-            if (isTvSeries) {
-                newTvSeriesLoadResponse(title, url, TvType.TvSeries, emptyList()) {
-                    this.posterUrl = posterUrl
-                    this.plot = description
-                }
-            } else {
-                newMovieLoadResponse(title, url, TvType.Movie, url) {
-                    this.posterUrl = posterUrl
-                    this.plot = description
-                }
-            }
-        } catch (e: Exception) {
-            newMovieLoadResponse("Error", url, TvType.Movie, url) {
-                this.posterUrl = ""
-                this.plot = "Failed to load content"
-            }
-        }
+        // Just pass the URL to WebView
+        return newMovieLoadResponse("Protected Site", url, TvType.Movie, url)
     }
 
     override suspend fun loadLinks(
@@ -105,21 +38,7 @@ class Fajrshow : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        return try {
-            var foundLinks = false
-            val document = app.get(data).document
-            
-            document.select("iframe").forEach { iframe ->
-                val src = iframe.attr("src")
-                if (src.isNotBlank()) {
-                    foundLinks = true
-                    loadExtractor(src, data, subtitleCallback, callback)
-                }
-            }
-            
-            foundLinks
-        } catch (e: Exception) {
-            false
-        }
+        // Let WebView handle the video extraction
+        return loadExtractor(data, data, subtitleCallback, callback)
     }
 }
