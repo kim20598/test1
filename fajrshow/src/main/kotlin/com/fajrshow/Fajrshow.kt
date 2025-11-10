@@ -1,4 +1,4 @@
-package com.fajershow
+package com.fajrshow
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
