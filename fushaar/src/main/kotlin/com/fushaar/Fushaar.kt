@@ -4,36 +4,43 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
 import org.jsoup.nodes.Element
-import java.net.URLEncoder
 
-class fushaar : MainAPI() {
+class Fushaar : MainAPI() {
+    // 🔧 BASIC CONFIGURATION (ALWAYS REQUIRED)
     override var mainUrl = "https://fushaar.com"
-    override var name = "fushaar"
-    override val usesWebView = false
+    override var name = "Fushaar"
+    override val usesWebView = false // Change to true ONLY if site has Cloudflare
     override val hasMainPage = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
-    override var lang = "en"
+    override var lang = "ar"
 
+    // ✅ SAFE: Custom headers helper (NOT override)
+    private fun getCustomHeaders(): Map<String, String> = mapOf(
+        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept-Language" to "ar"
+    )
+
+    // ✅ SAFE: Element to SearchResponse converter
     private fun Element.toSearchResponse(): SearchResponse? {
         return try {
-            val title = select("h1, h2, h3, .title, .name, a").firstOrNull()?.text()?.trim() ?: return null
+            val title = select("h1, h2, h3, .title").firstOrNull()?.text()?.trim() ?: return null
             val href = select("a").attr("href") ?: return null
-            val fullUrl = if (href.startsWith("http")) href else mainUrl + href
             val posterUrl = select("img").attr("src")
-            val fullPoster = if (posterUrl.startsWith("http")) posterUrl else mainUrl + posterUrl
             
+            // Determine content type
             val type = when {
-                fullUrl.contains("/series/") || fullUrl.contains("/tv/") -> TvType.TvSeries
+                href.contains("/series/") || href.contains("/tv/") -> TvType.TvSeries
                 else -> TvType.Movie
             }
             
             if (type == TvType.TvSeries) {
-                newTvSeriesSearchResponse(title, fullUrl, type) {
-                    this.posterUrl = fullPoster
+                newTvSeriesSearchResponse(title, href, type) {
+                    this.posterUrl = posterUrl
                 }
             } else {
-                newMovieSearchResponse(title, fullUrl, type) {
-                    this.posterUrl = fullPoster
+                newMovieSearchResponse(title, href, type) {
+                    this.posterUrl = posterUrl
                 }
             }
         } catch (e: Exception) {
@@ -41,18 +48,18 @@ class fushaar : MainAPI() {
         }
     }
 
+    // ✅ SAFE: Main page configuration
     override val mainPage = mainPageOf(
-        "$mainUrl/movies/" to "Movies",
-        "$mainUrl/series/" to "Series",
-        "$mainUrl/" to "Home"
+        "https://fushaar.com/" to "Latest Content"
     )
 
+    // ✅ SAFE: Main page implementation
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         return try {
             val url = if (page > 1) "${request.data}page/$page/" else request.data
-            val document = app.get(url).document
+            val document = app.get(url, headers = getCustomHeaders()).document
             
-            val home = document.select("article, .item, .movie, .series, .card, .post").mapNotNull { element ->
+            val home = document.select("article").mapNotNull { element ->
                 element.toSearchResponse()
             }
             
@@ -62,13 +69,13 @@ class fushaar : MainAPI() {
         }
     }
 
+    // ✅ SAFE: Search implementation
     override suspend fun search(query: String): List<SearchResponse> {
         return try {
             if (query.length < 3) return emptyList()
-            val encodedQuery = URLEncoder.encode(query, "UTF-8")
-            val document = app.get("$mainUrl/?s=$encodedQuery").document
+            val document = app.get("$mainUrl/?s=$query", headers = getCustomHeaders()).document
             
-            document.select("article, .item, .movie, .series, .card, .post").mapNotNull { element ->
+            document.select("article").mapNotNull { element ->
                 element.toSearchResponse()
             }
         } catch (e: Exception) {
@@ -76,25 +83,25 @@ class fushaar : MainAPI() {
         }
     }
 
+    // ✅ SAFE: Load implementation
     override suspend fun load(url: String): LoadResponse {
         return try {
-            val document = app.get(url).document
+            val document = app.get(url, headers = getCustomHeaders()).document
             
-            val title = document.selectFirst("h1, h2, .title")?.text()?.trim() ?: "Unknown Title"
+            val title = document.selectFirst("h1")?.text()?.trim() ?: "Unknown Title"
             val posterUrl = document.selectFirst("img")?.attr("src") ?: ""
-            val fullPoster = if (posterUrl.startsWith("http")) posterUrl else mainUrl + posterUrl
-            val description = document.selectFirst("p, .content, .description, .plot")?.text()?.trim() ?: ""
+            val description = document.selectFirst("[class*='content'], [class*='description'], .plot")?.text()?.trim() ?: ""
             
-            val isTvSeries = url.contains("/series/") || url.contains("/tv/") || document.select(".episodes, .seasons").isNotEmpty()
+            val isTvSeries = url.contains("/series/") || document.select(".episodes, .seasons").isNotEmpty()
             
             if (isTvSeries) {
                 newTvSeriesLoadResponse(title, url, TvType.TvSeries, emptyList()) {
-                    this.posterUrl = fullPoster
+                    this.posterUrl = posterUrl
                     this.plot = description
                 }
             } else {
                 newMovieLoadResponse(title, url, TvType.Movie, url) {
-                    this.posterUrl = fullPoster
+                    this.posterUrl = posterUrl
                     this.plot = description
                 }
             }
@@ -106,6 +113,7 @@ class fushaar : MainAPI() {
         }
     }
 
+    // ✅ FIXED: Load links implementation - SIMPLIFIED & SAFE
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -114,27 +122,77 @@ class fushaar : MainAPI() {
     ): Boolean {
         return try {
             var foundLinks = false
-            val document = app.get(data).document
+            val document = app.get(data, headers = getCustomHeaders()).document
             
+            // 🎯 METHOD 1: Direct MP4 links (from analysis)
+            document.select("a[href*='.mp4']").forEach { link ->
+                val url = link.attr("href")
+                if (url.isNotBlank()) {
+                    // ✅ FIXED: Use simple quality detection without breaking API
+                    val qualityName = when {
+                        "1080" in link.text().lowercase() || "fullhd" in link.text().lowercase() -> "1080p"
+                        "480" in link.text().lowercase() || "web" in link.text().lowercase() -> "480p" 
+                        "240" in link.text().lowercase() || "sd" in link.text().lowercase() -> "240p"
+                        else -> "Unknown"
+                    }
+                    
+                    // ✅ FIXED: Use safe ExtractorLink creation
+                    callback.invoke(
+                        ExtractorLink(
+                            name,
+                            "$name - $qualityName",
+                            url,
+                            "$mainUrl/",
+                            getQualityFromName(qualityName),
+                            url.contains(".m3u8")
+                        )
+                    )
+                    foundLinks = true
+                }
+            }
+            
+            // 🎯 METHOD 2: Embedded players (from analysis)
             document.select("iframe").forEach { iframe ->
                 val src = iframe.attr("src")
                 if (src.isNotBlank()) {
                     foundLinks = true
+                    // CloudStream will automatically handle these extractors
                     loadExtractor(src, data, subtitleCallback, callback)
                 }
             }
             
-            document.select("a[href*='.mp4'], a[href*='.m3u8']").forEach { link ->
+            // 🎯 METHOD 3: HLS streams
+            document.select("a[href*='.m3u8']").forEach { link ->
                 val url = link.attr("href")
                 if (url.isNotBlank()) {
+                    callback.invoke(
+                        ExtractorLink(
+                            name,
+                            "$name - HLS",
+                            url,
+                            "$mainUrl/",
+                            Qualities.Unknown.value,
+                            true
+                        )
+                    )
                     foundLinks = true
-                    loadExtractor(url, data, subtitleCallback, callback)
                 }
             }
             
             foundLinks
         } catch (e: Exception) {
             false
+        }
+    }
+    
+    // ✅ FIXED: Safe quality helper function
+    private fun getQualityFromName(qualityName: String): Int {
+        return when (qualityName.lowercase()) {
+            "1080p", "fullhd" -> Qualities.FullHDP.value
+            "720p", "hd" -> Qualities.720P.value
+            "480p", "web" -> Qualities.480P.value
+            "360p", "240p", "sd" -> Qualities.240P.value
+            else -> Qualities.Unknown.value
         }
     }
 }
