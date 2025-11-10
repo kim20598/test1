@@ -4,32 +4,36 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
 import org.jsoup.nodes.Element
+import java.net.URLEncoder
 
-class Fushaar : MainAPI() {
+class YourProvider : MainAPI() {
     override var mainUrl = "https://fushaar.com"
-    override var name = "Fushaar"
+    override var name = "YourProvider"
     override val usesWebView = false
     override val hasMainPage = true
     override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
-    override var lang = "ar"
+    override var lang = "en"
 
     private fun Element.toSearchResponse(): SearchResponse? {
         return try {
-            val title = select("h3").text().trim()
-            val href = select("a").attr("href")
+            val title = select("h1, h2, h3, .title, .name, a").firstOrNull()?.text()?.trim() ?: return null
+            val href = select("a").attr("href") ?: return null
+            val fullUrl = if (href.startsWith("http")) href else mainUrl + href
             val posterUrl = select("img").attr("src")
+            val fullPoster = if (posterUrl.startsWith("http")) posterUrl else mainUrl + posterUrl
             
-            if (title.isBlank() || href.isBlank()) return null
-            
-            val type = if (href.contains("/series/")) TvType.TvSeries else TvType.Movie
+            val type = when {
+                fullUrl.contains("/series/") || fullUrl.contains("/tv/") -> TvType.TvSeries
+                else -> TvType.Movie
+            }
             
             if (type == TvType.TvSeries) {
-                newTvSeriesSearchResponse(title, href, type) {
-                    this.posterUrl = posterUrl
+                newTvSeriesSearchResponse(title, fullUrl, type) {
+                    this.posterUrl = fullPoster
                 }
             } else {
-                newMovieSearchResponse(title, href, type) {
-                    this.posterUrl = posterUrl
+                newMovieSearchResponse(title, fullUrl, type) {
+                    this.posterUrl = fullPoster
                 }
             }
         } catch (e: Exception) {
@@ -39,7 +43,8 @@ class Fushaar : MainAPI() {
 
     override val mainPage = mainPageOf(
         "$mainUrl/movies/" to "Movies",
-        "$mainUrl/series/" to "Series"
+        "$mainUrl/series/" to "Series",
+        "$mainUrl/" to "Home"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -47,7 +52,7 @@ class Fushaar : MainAPI() {
             val url = if (page > 1) "${request.data}page/$page/" else request.data
             val document = app.get(url).document
             
-            val home = document.select("article.item").mapNotNull { element ->
+            val home = document.select("article, .item, .movie, .series, .card, .post").mapNotNull { element ->
                 element.toSearchResponse()
             }
             
@@ -60,9 +65,10 @@ class Fushaar : MainAPI() {
     override suspend fun search(query: String): List<SearchResponse> {
         return try {
             if (query.length < 3) return emptyList()
-            val document = app.get("$mainUrl/?s=$query").document
+            val encodedQuery = URLEncoder.encode(query, "UTF-8")
+            val document = app.get("$mainUrl/?s=$encodedQuery").document
             
-            document.select("article.item").mapNotNull { element ->
+            document.select("article, .item, .movie, .series, .card, .post").mapNotNull { element ->
                 element.toSearchResponse()
             }
         } catch (e: Exception) {
@@ -74,20 +80,21 @@ class Fushaar : MainAPI() {
         return try {
             val document = app.get(url).document
             
-            val title = document.selectFirst("h1")?.text()?.trim() ?: "Unknown Title"
+            val title = document.selectFirst("h1, h2, .title")?.text()?.trim() ?: "Unknown Title"
             val posterUrl = document.selectFirst("img")?.attr("src") ?: ""
-            val description = document.selectFirst("p")?.text()?.trim() ?: ""
+            val fullPoster = if (posterUrl.startsWith("http")) posterUrl else mainUrl + posterUrl
+            val description = document.selectFirst("p, .content, .description, .plot")?.text()?.trim() ?: ""
             
-            val isTvSeries = url.contains("/series/")
+            val isTvSeries = url.contains("/series/") || url.contains("/tv/") || document.select(".episodes, .seasons").isNotEmpty()
             
             if (isTvSeries) {
                 newTvSeriesLoadResponse(title, url, TvType.TvSeries, emptyList()) {
-                    this.posterUrl = posterUrl
+                    this.posterUrl = fullPoster
                     this.plot = description
                 }
             } else {
                 newMovieLoadResponse(title, url, TvType.Movie, url) {
-                    this.posterUrl = posterUrl
+                    this.posterUrl = fullPoster
                     this.plot = description
                 }
             }
@@ -114,6 +121,14 @@ class Fushaar : MainAPI() {
                 if (src.isNotBlank()) {
                     foundLinks = true
                     loadExtractor(src, data, subtitleCallback, callback)
+                }
+            }
+            
+            document.select("a[href*='.mp4'], a[href*='.m3u8']").forEach { link ->
+                val url = link.attr("href")
+                if (url.isNotBlank()) {
+                    foundLinks = true
+                    loadExtractor(url, data, subtitleCallback, callback)
                 }
             }
             
