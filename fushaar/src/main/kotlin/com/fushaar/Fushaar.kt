@@ -161,30 +161,22 @@ class Fushaar : MainAPI() {
             }
             
             // Try quality-specific links based on analysis
-            val qualityPatterns = mapOf(
-                "240p" to 240,
-                "480p" to 480, 
-                "1080p" to 1080,
-                "FullHD" to 1080
-            )
-            
             doc.select("a").forEach { element ->
                 val text = element.text()
                 val href = element.attr("href")
-                qualityPatterns.forEach { (pattern, quality) ->
-                    if (text.contains(pattern, true) && href.isNotBlank()) {
-                        foundLinks = true
-                        callback.invoke(
-                            ExtractorLink(
-                                name,
-                                "Direct $quality",
-                                href,
-                                mainUrl,
-                                quality,
-                                false
-                            )
+                val quality = getQualityFromText(text)
+                if (quality > 0 && href.isNotBlank()) {
+                    foundLinks = true
+                    callback.invoke(
+                        ExtractorLink(
+                            name,
+                            "Direct $quality",
+                            href,
+                            mainUrl,
+                            quality,
+                            false
                         )
-                    }
+                    )
                 }
             }
             
@@ -229,7 +221,17 @@ class Fushaar : MainAPI() {
             url.contains("720p") -> 720
             url.contains("1080p") -> 1080
             url.contains("FullHD") -> 1080
-            else -> Qualities.Unknown.value
+            else -> 0 // Use 0 for unknown quality
+        }
+    }
+
+    private fun getQualityFromText(text: String): Int {
+        return when {
+            text.contains("240p") || text.contains("240/SD") -> 240
+            text.contains("480p") || text.contains("480/Web") -> 480
+            text.contains("720p") || text.contains("720/HD") -> 720
+            text.contains("1080p") || text.contains("1080/FullHD") -> 1080
+            else -> 0
         }
     }
 }
