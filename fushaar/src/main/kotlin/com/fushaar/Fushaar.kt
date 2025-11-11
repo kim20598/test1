@@ -144,7 +144,7 @@ class Fushaar : MainAPI() {
                             "Direct",
                             url,
                             mainUrl,
-                            Qualities.Unknown.value,
+                            getQualityFromName(url),
                             url.contains(".m3u8")
                         )
                     )
@@ -162,10 +162,10 @@ class Fushaar : MainAPI() {
             
             // Try quality-specific links based on analysis
             val qualityPatterns = mapOf(
-                "240p" to "240",
-                "480p" to "480", 
-                "1080p" to "1080",
-                "FullHD" to "1080"
+                "240p" to 240,
+                "480p" to 480, 
+                "1080p" to 1080,
+                "FullHD" to 1080
             )
             
             doc.select("a").forEach { element ->
@@ -180,7 +180,7 @@ class Fushaar : MainAPI() {
                                 "Direct $quality",
                                 href,
                                 mainUrl,
-                                quality.toIntOrNull() ?: Qualities.Unknown.value,
+                                quality,
                                 false
                             )
                         )
@@ -208,7 +208,7 @@ class Fushaar : MainAPI() {
                             "Fushaar Stream",
                             url,
                             mainUrl,
-                            Qualities.Unknown.value,
+                            getQualityFromName(url),
                             false
                         )
                     )
@@ -220,5 +220,16 @@ class Fushaar : MainAPI() {
         }
         
         return foundLinks
+    }
+
+    private fun getQualityFromName(url: String): Int {
+        return when {
+            url.contains("240p") -> 240
+            url.contains("480p") -> 480
+            url.contains("720p") -> 720
+            url.contains("1080p") -> 1080
+            url.contains("FullHD") -> 1080
+            else -> Qualities.Unknown.value
+        }
     }
 }
