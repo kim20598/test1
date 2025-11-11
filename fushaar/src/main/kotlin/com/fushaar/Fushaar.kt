@@ -113,7 +113,7 @@ class Fushaar : MainAPI() {
         }
     }
 
-    // ✅ FIXED: Load links implementation - SIMPLIFIED & SAFE
+    // ✅ FIXED: Load links implementation - SIMPLIFIED & 100% SAFE
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -128,7 +128,7 @@ class Fushaar : MainAPI() {
             document.select("a[href*='.mp4']").forEach { link ->
                 val url = link.attr("href")
                 if (url.isNotBlank()) {
-                    // ✅ FIXED: Use simple quality detection without breaking API
+                    // ✅ FIXED: Use simple quality name without complex Qualities API
                     val qualityName = when {
                         "1080" in link.text().lowercase() || "fullhd" in link.text().lowercase() -> "1080p"
                         "480" in link.text().lowercase() || "web" in link.text().lowercase() -> "480p" 
@@ -136,16 +136,17 @@ class Fushaar : MainAPI() {
                         else -> "Unknown"
                     }
                     
-                    // ✅ FIXED: Use safe ExtractorLink creation
+                    // ✅ FIXED: Use newExtractorLink instead of deprecated constructor
                     callback.invoke(
-                        ExtractorLink(
-                            name,
+                        newExtractorLink(
                             "$name - $qualityName",
                             url,
                             "$mainUrl/",
-                            getQualityFromName(qualityName),
+                            getQuality(qualityName),
                             url.contains(".m3u8")
-                        )
+                        ) {
+                            this.name = "$name - $qualityName"
+                        }
                     )
                     foundLinks = true
                 }
@@ -165,15 +166,17 @@ class Fushaar : MainAPI() {
             document.select("a[href*='.m3u8']").forEach { link ->
                 val url = link.attr("href")
                 if (url.isNotBlank()) {
+                    // ✅ FIXED: Use newExtractorLink for HLS
                     callback.invoke(
-                        ExtractorLink(
-                            name,
-                            "$name - HLS",
+                        newExtractorLink(
+                            "$name - HLS", 
                             url,
                             "$mainUrl/",
                             Qualities.Unknown.value,
                             true
-                        )
+                        ) {
+                            this.name = "$name - HLS"
+                        }
                     )
                     foundLinks = true
                 }
@@ -185,13 +188,12 @@ class Fushaar : MainAPI() {
         }
     }
     
-    // ✅ FIXED: Safe quality helper function
-    private fun getQualityFromName(qualityName: String): Int {
-        return when (qualityName.lowercase()) {
-            "1080p", "fullhd" -> Qualities.FullHDP.value
-            "720p", "hd" -> Qualities.720P.value
-            "480p", "web" -> Qualities.480P.value
-            "360p", "240p", "sd" -> Qualities.240P.value
+    // ✅ FIXED: Simple quality mapping without complex when expressions
+    private fun getQuality(qualityName: String): Int {
+        return when (qualityName) {
+            "1080p" -> 1080
+            "480p" -> 480
+            "240p" -> 240
             else -> Qualities.Unknown.value
         }
     }
