@@ -1,191 +1,174 @@
 package com.fushaar
 
 import com.lagradost.cloudstream3.*
+import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
 import org.jsoup.nodes.Element
+import java.net.URLEncoder
 
 class Fushaar : MainAPI() {
-    // 🔧 BASIC CONFIGURATION (ALWAYS REQUIRED)
+    override var lang = "ar"
     override var mainUrl = "https://fushaar.com"
     override var name = "Fushaar"
-    override val usesWebView = false // Change to true ONLY if site has Cloudflare
+    override val usesWebView = false
     override val hasMainPage = true
-    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
-    override var lang = "ar"
+    override val supportedTypes = setOf(TvType.Movie)
 
-    // ✅ SAFE: Custom headers helper (NOT override)
-    private fun getCustomHeaders(): Map<String, String> = mapOf(
-        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Accept-Language" to "ar"
-    )
+    private fun String.getIntFromText(): Int? {
+        return Regex("""\d+""").find(this)?.groupValues?.firstOrNull()?.toIntOrNull()
+    }
+    
+    private fun String.cleanTitle(): String {
+        return this.replace("مشاهدة وتحميل فلم|مشاهدة وتحميل|اونلاين|مترجم".toRegex(), "").trim()
+    }
 
-    // ✅ SAFE: Element to SearchResponse converter
-    private fun Element.toSearchResponse(): SearchResponse? {
-        return try {
-            val title = select("h1, h2, h3, .title").firstOrNull()?.text()?.trim() ?: return null
-            val href = select("a").attr("href") ?: return null
-            val posterUrl = select("img").attr("src")
-            
-            // Determine content type
-            val type = when {
-                href.contains("/series/") || href.contains("/tv/") -> TvType.TvSeries
-                else -> TvType.Movie
-            }
-            
-            if (type == TvType.TvSeries) {
-                newTvSeriesSearchResponse(title, href, type) {
-                    this.posterUrl = posterUrl
-                }
-            } else {
-                newMovieSearchResponse(title, href, type) {
-                    this.posterUrl = posterUrl
-                }
-            }
-        } catch (e: Exception) {
-            null
+    // Store poster URLs when we find them in search/main page 
+    private val posterCache = mutableMapOf<String, String>()
+
+    private fun Element.toSearchResponse(): SearchResponse {
+        val title = select("h3").text().cleanTitle()
+        
+        // Get the poster from data-lazy-src (the good one from main page)
+        val posterUrl = select("img").attr("data-lazy-src")
+        val href = select("a").attr("href")
+        
+        // Store the poster URL for later use in load()
+        if (posterUrl.isNotBlank()) {
+            posterCache[href] = posterUrl
+        }
+        
+        return newMovieSearchResponse(title, href, TvType.Movie) {
+            this.posterUrl = posterUrl
         }
     }
 
-    // ✅ SAFE: Main page configuration
+    // Fushaar categories
     override val mainPage = mainPageOf(
-        "https://fushaar.com/" to "Latest Content"
+        "$mainUrl/page/" to "Movies | أفلام",
+        "$mainUrl/gerne/action/" to "Action | أكشن",
+        "$mainUrl/gerne/adventure/" to "Adventure | مغامرة",
+        "$mainUrl/gerne/animation/" to "Animation | أنيمايشن",
+        "$mainUrl/gerne/biography/" to "Biography | سيرة",
+        "$mainUrl/gerne/comedy/" to "Comedy | كوميديا",
+        "$mainUrl/gerne/crime/" to "Crime | جريمة",
+        "$mainUrl/gerne/documentary/" to "Documentary | وثائقي",
+        "$mainUrl/gerne/drama/" to "Drama | دراما",
+        "$mainUrl/gerne/family/"	to "Family | عائلي",
+        "$mainUrl/gerne/fantasy/"	to "Fantasy | فنتازيا",
+        "$mainUrl/gerne/herror/" to "Herror | رعب",
+        "$mainUrl/gerne/history/" to "History | تاريخي",
+        "$mainUrl/gerne/music/" to "Music | موسيقى",
+        "$mainUrl/gerne/musical/" to "Musical | موسيقي",
+        "$mainUrl/gerne/mystery/" to "Mystery | غموض",
+        "$mainUrl/gerne/romance/" to "Romance | رومنسي",
+        "$mainUrl/gerne/sci-fi/" to "Sci-fi | خيال علمي",
+        "$mainUrl/gerne/short/" to "Short | قصير",
+        "$mainUrl/gerne/sport/" to "Sport | رياضة",
+        "$mainUrl/gerne/thriller/" to "Thriller | إثارة",
+        "$mainUrl/gerne/war/" to "War | حرب",
+        "$mainUrl/gerne/western/" to "Western | غربي",
     )
 
-    // ✅ SAFE: Main page implementation
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        return try {
-            val url = if (page > 1) "${request.data}page/$page/" else request.data
-            val document = app.get(url, headers = getCustomHeaders()).document
-            
-            val home = document.select("article").mapNotNull { element ->
-                element.toSearchResponse()
-            }
-            
-            newHomePageResponse(request.name, home)
-        } catch (e: Exception) {
-            newHomePageResponse(request.name, emptyList())
+        val url = if (page > 1) "${request.data}page/$page/" else request.data
+        val document = app.get(url).document
+        
+        val home = document.select("article.poster, article").mapNotNull {
+            it.toSearchResponse()
         }
+        return newHomePageResponse(request.name, home)
     }
 
-    // ✅ SAFE: Search implementation
     override suspend fun search(query: String): List<SearchResponse> {
-        return try {
-            if (query.length < 3) return emptyList()
-            val document = app.get("$mainUrl/?s=$query", headers = getCustomHeaders()).document
-            
-            document.select("article").mapNotNull { element ->
-                element.toSearchResponse()
-            }
-        } catch (e: Exception) {
-            emptyList()
+        if (query.length < 3) return emptyList()
+        val encodedQuery = URLEncoder.encode(query, "UTF-8")
+        val doc = app.get("$mainUrl/?s=$encodedQuery").document
+        
+        return doc.select("article.poster, article").mapNotNull {
+            it.toSearchResponse()
         }
     }
 
-    // ✅ SAFE: Load implementation
     override suspend fun load(url: String): LoadResponse {
-        return try {
-            val document = app.get(url, headers = getCustomHeaders()).document
-            
-            val title = document.selectFirst("h1")?.text()?.trim() ?: "Unknown Title"
-            val posterUrl = document.selectFirst("img")?.attr("src") ?: ""
-            val description = document.selectFirst("[class*='content'], [class*='description'], .plot")?.text()?.trim() ?: ""
-            
-            val isTvSeries = url.contains("/series/") || document.select(".episodes, .seasons").isNotEmpty()
-            
-            if (isTvSeries) {
-                newTvSeriesLoadResponse(title, url, TvType.TvSeries, emptyList()) {
-                    this.posterUrl = posterUrl
-                    this.plot = description
-                }
-            } else {
-                newMovieLoadResponse(title, url, TvType.Movie, url) {
-                    this.posterUrl = posterUrl
-                    this.plot = description
-                }
-            }
-        } catch (e: Exception) {
-            newMovieLoadResponse("Error", url, TvType.Movie, url) {
-                this.posterUrl = ""
-                this.plot = "Failed to load content"
-            }
+        val doc = app.get(url).document
+        
+        val title = doc.selectFirst("h1.entry-title, h1")?.text()?.cleanTitle() ?: "Unknown Title"
+
+        // FIXED: Use the same poster from main page instead of trying to extract from movie page
+        val posterUrl = posterCache[url] ?: ""
+        
+        val synopsis = doc.selectFirst(".entry-content, .post-content")?.text() ?: ""
+        val year = doc.selectFirst(".year, .labels .year")?.text()?.getIntFromText()
+        
+        val tags = doc.select(".gerne a, .genre a").map { it.text() }
+        
+        val recommendations = doc.select(".related-posts article, .simple-related-posts article").mapNotNull { element ->
+            element.toSearchResponse()
+        }
+        
+        val youtubeTrailer = doc.selectFirst("iframe[src*='youtube'], iframe[src*='youtu.be']")?.attr("src") ?: ""
+        
+        return newMovieLoadResponse(title, url, TvType.Movie, url) {
+            this.posterUrl = posterUrl
+            this.recommendations = recommendations
+            this.plot = synopsis
+            this.tags = tags
+            this.year = year
+            addTrailer(youtubeTrailer)
         }
     }
 
-    // ✅ PROVEN WORKING: Load links implementation - SIMPLEST & SAFEST
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        return try {
-            var foundLinks = false
-            val document = app.get(data, headers = getCustomHeaders()).document
+        var foundLinks = false
+        
+        try {
+            val doc = app.get(data).document
             
-            // 🎯 METHOD 1: Direct MP4 links (from analysis)
-            document.select("a[href*='.mp4']").forEach { link ->
-                val url = link.attr("href")
+            // Try direct video links first
+            doc.select("a[href*='.mp4'], a[href*='.m3u8']").forEach { element ->
+                val url = element.attr("href")
                 if (url.isNotBlank()) {
-                    // ✅ PROVEN: Use simple ExtractorLink with basic quality
-                    callback.invoke(
-                        ExtractorLink(
-                            name,
-                            "$name - Direct",
-                            url,
-                            "$mainUrl/",
-                            getSimpleQuality(link.text()),
-                            url.contains(".m3u8")
-                        )
-                    )
                     foundLinks = true
+                    loadExtractor(url, data, subtitleCallback, callback)
                 }
             }
             
-            // 🎯 METHOD 2: Embedded players (from analysis)
-            document.select("iframe").forEach { iframe ->
+            // Try iframe embeds
+            doc.select("iframe").forEach { iframe ->
                 val src = iframe.attr("src")
                 if (src.isNotBlank()) {
                     foundLinks = true
-                    // CloudStream will automatically handle these extractors
                     loadExtractor(src, data, subtitleCallback, callback)
                 }
             }
             
-            // 🎯 METHOD 3: HLS streams
-            document.select("a[href*='.m3u8']").forEach { link ->
-                val url = link.attr("href")
-                if (url.isNotBlank()) {
-                    // ✅ PROVEN: Simple ExtractorLink for HLS
-                    callback.invoke(
-                        ExtractorLink(
-                            name,
-                            "$name - HLS", 
-                            url,
-                            "$mainUrl/",
-                            getSimpleQuality(link.text()),
-                            true
-                        )
-                    )
-                    foundLinks = true
+            // If no links found, try POST request
+            if (!foundLinks) {
+                try {
+                    val postDoc = app.post(data, data = mapOf("view" to "1")).document
+                    
+                    postDoc.select("a[href*='.mp4'], a[href*='.m3u8']").forEach { element ->
+                        val url = element.attr("href")
+                        if (url.isNotBlank()) {
+                            foundLinks = true
+                            loadExtractor(url, data, subtitleCallback, callback)
+                        }
+                    }
+                } catch (e: Exception) {
+                    // POST failed, continue
                 }
             }
             
-            foundLinks
         } catch (e: Exception) {
-            false
+            // Fallback if everything fails
         }
-    }
-    
-    // ✅ PROVEN WORKING: Simple quality detection
-    private fun getSimpleQuality(text: String): Int {
-        return when {
-            "1080" in text.lowercase() || "fullhd" in text.lowercase() -> 1080
-            "720" in text.lowercase() || "hd" in text.lowercase() -> 720
-            "480" in text.lowercase() || "web" in text.lowercase() -> 480
-            "240" in text.lowercase() || "sd" in text.lowercase() -> 240
-            else -> 0  // Unknown quality
-        }
+        
+        return foundLinks
     }
 }
