@@ -177,7 +177,17 @@ class EgyDead : MainAPI() {
         var foundLinks = false
         
         try {
-            val doc = app.post(data, data = mapOf("View" to "1")).document
+            // Get subtitles first
+            val doc = app.get(data).document
+            val imdbId = extractImdbId(doc)
+            if (!imdbId.isNullOrBlank()) {
+                SubUtils.getAllSubtitles(
+                    id = imdbId,
+                    subtitleCallback = subtitleCallback
+                )
+            }
+            
+            val postDoc = app.post(data, data = mapOf("View" to "1")).document
             
             doc.select(".donwload-servers-list > li, .download-servers > li").forEach { element ->
                 val url = element.select("a").attr("href")
@@ -200,5 +210,20 @@ class EgyDead : MainAPI() {
         }
         
         return foundLinks
+    }
+
+    // Add this function to extract IMDB ID
+    private fun extractImdbId(doc: org.jsoup.nodes.Document): String? {
+        val imdbPattern = Regex("""tt\d+""")
+        doc.select("meta[content*='tt']").forEach { meta ->
+            imdbPattern.find(meta.attr("content"))?.let { return it.value }
+        }
+        doc.body()?.text()?.let { bodyText ->
+            imdbPattern.find(bodyText)?.let { return it.value }
+        }
+        doc.select("a[href*='imdb.com'], a[href*='imdb']").forEach { link ->
+            imdbPattern.find(link.attr("href"))?.let { return it.value }
+        }
+        return null
     }
 }
