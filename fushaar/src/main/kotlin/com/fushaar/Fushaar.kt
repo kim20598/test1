@@ -27,12 +27,10 @@ class Fushaar : MainAPI() {
     private val posterCache = mutableMapOf<String, String>()
 
     private fun Element.toSearchResponse(): SearchResponse {
-        val title = select("h3, h2, .entry-title").text().cleanTitle()
+        val title = select("h3").text().cleanTitle()
         
-        // Get the poster from data-lazy-src or src
-        val posterUrl = select("img").attr("data-lazy-src").ifBlank { 
-            select("img").attr("src") 
-        }
+        // Get the poster from data-lazy-src (the good one from main page)
+        val posterUrl = select("img").attr("data-lazy-src")
         val href = select("a").attr("href")
         
         // Store the poster URL for later use in load()
@@ -45,22 +43,23 @@ class Fushaar : MainAPI() {
         }
     }
 
-    // Fushaar categories based on analysis
+    // Fushaar categories
     override val mainPage = mainPageOf(
-        "$mainUrl/" to "Latest Movies | أحدث الأفلام",
+        "$mainUrl/page/" to "Movies | أفلام",
         "$mainUrl/gerne/action/" to "Action | أكشن",
-        "$mainUrl/gerne/adventure/" to "Adventure | مغامرة", 
+        "$mainUrl/gerne/adventure/" to "Adventure | مغامرة",
         "$mainUrl/gerne/animation/" to "Animation | أنيمايشن",
         "$mainUrl/gerne/biography/" to "Biography | سيرة",
         "$mainUrl/gerne/comedy/" to "Comedy | كوميديا",
         "$mainUrl/gerne/crime/" to "Crime | جريمة",
         "$mainUrl/gerne/documentary/" to "Documentary | وثائقي",
         "$mainUrl/gerne/drama/" to "Drama | دراما",
-        "$mainUrl/gerne/family/" to "Family | عائلي",
-        "$mainUrl/gerne/fantasy/" to "Fantasy | فنتازيا",
-        "$mainUrl/gerne/horror/" to "Horror | رعب",
+        "$mainUrl/gerne/family/"	to "Family | عائلي",
+        "$mainUrl/gerne/fantasy/"	to "Fantasy | فنتازيا",
+        "$mainUrl/gerne/herror/" to "Herror | رعب",
         "$mainUrl/gerne/history/" to "History | تاريخي",
         "$mainUrl/gerne/music/" to "Music | موسيقى",
+        "$mainUrl/gerne/musical/" to "Musical | موسيقي",
         "$mainUrl/gerne/mystery/" to "Mystery | غموض",
         "$mainUrl/gerne/romance/" to "Romance | رومنسي",
         "$mainUrl/gerne/sci-fi/" to "Sci-fi | خيال علمي",
@@ -68,7 +67,7 @@ class Fushaar : MainAPI() {
         "$mainUrl/gerne/sport/" to "Sport | رياضة",
         "$mainUrl/gerne/thriller/" to "Thriller | إثارة",
         "$mainUrl/gerne/war/" to "War | حرب",
-        "$mainUrl/gerne/western/" to "Western | غربي"
+        "$mainUrl/gerne/western/" to "Western | غربي",
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -78,7 +77,7 @@ class Fushaar : MainAPI() {
         val home = document.select("article.poster, article").mapNotNull {
             it.toSearchResponse()
         }
-        return newHomePageResponse(request.name, home, hasNext = true)
+        return newHomePageResponse(request.name, home)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
@@ -96,29 +95,27 @@ class Fushaar : MainAPI() {
         
         val title = doc.selectFirst("h1.entry-title, h1")?.text()?.cleanTitle() ?: "Unknown Title"
 
-        // Use cached poster or try to extract from movie page
-        val posterUrl = posterCache[url] ?: doc.selectFirst(".poster img, .movie-poster img")?.attr("src") ?: ""
-
-        val synopsis = doc.selectFirst(".entry-content, .post-content, .plot")?.text()?.trim() ?: ""
-        val year = doc.selectFirst(".year, .labels .year, time")?.text()?.getIntFromText()
+        // FIXED: Use the same poster from main page instead of trying to extract from movie page
+        val posterUrl = posterCache[url] ?: ""
         
-        val tags = doc.select(".gerne a, .genre a, .labels a").map { it.text() }
+        val synopsis = doc.selectFirst(".entry-content, .post-content")?.text() ?: ""
+        val year = doc.selectFirst(".year, .labels .year")?.text()?.getIntFromText()
         
-        val recommendations = doc.select(".related-posts article, .simple-related-posts article, .movie-grid article").mapNotNull { element ->
+        val tags = doc.select(".gerne a, .genre a").map { it.text() }
+        
+        val recommendations = doc.select(".related-posts article, .simple-related-posts article").mapNotNull { element ->
             element.toSearchResponse()
         }
         
         val youtubeTrailer = doc.selectFirst("iframe[src*='youtube'], iframe[src*='youtu.be']")?.attr("src") ?: ""
-
+        
         return newMovieLoadResponse(title, url, TvType.Movie, url) {
             this.posterUrl = posterUrl
             this.recommendations = recommendations
             this.plot = synopsis
             this.tags = tags
             this.year = year
-            if (youtubeTrailer.isNotBlank()) {
-                addTrailer(youtubeTrailer)
-            }
+            addTrailer(youtubeTrailer)
         }
     }
 
@@ -133,55 +130,8 @@ class Fushaar : MainAPI() {
         try {
             val doc = app.get(data).document
             
-            // Extract from direct MP4 links found in analysis
+            // Try direct video links first
             doc.select("a[href*='.mp4'], a[href*='.m3u8']").forEach { element ->
-                val url = element.attr("href")
-                if (url.isNotBlank() && (url.contains(".mp4") || url.contains(".m3u8"))) {
-                    foundLinks = true
-                    callback.invoke(
-                        ExtractorLink(
-                            name,
-                            "Direct",
-                            url,
-                            mainUrl,
-                            getQualityFromName(url),
-                            url.contains(".m3u8")
-                        )
-                    )
-                }
-            }
-            
-            // Extract from iframe embeds (found 7 iframes in analysis)
-            doc.select("iframe").forEach { iframe ->
-                val src = iframe.attr("src")
-                if (src.isNotBlank() && !src.startsWith("about:")) {
-                    foundLinks = true
-                    loadExtractor(src, data, subtitleCallback, callback)
-                }
-            }
-            
-            // Try quality-specific links based on analysis
-            doc.select("a").forEach { element ->
-                val text = element.text()
-                val href = element.attr("href")
-                val quality = getQualityFromText(text)
-                if (quality > 0 && href.isNotBlank()) {
-                    foundLinks = true
-                    callback.invoke(
-                        ExtractorLink(
-                            name,
-                            "Direct $quality",
-                            href,
-                            mainUrl,
-                            quality,
-                            false
-                        )
-                    )
-                }
-            }
-            
-            // Try uptobox links found in analysis
-            doc.select("a[href*='uptobox']").forEach { element ->
                 val url = element.attr("href")
                 if (url.isNotBlank()) {
                     foundLinks = true
@@ -189,49 +139,36 @@ class Fushaar : MainAPI() {
                 }
             }
             
-            // Try stream.fushaar.link domains found in analysis
-            doc.select("a[href*='stream.fushaar']").forEach { element ->
-                val url = element.attr("href")
-                if (url.isNotBlank()) {
+            // Try iframe embeds
+            doc.select("iframe").forEach { iframe ->
+                val src = iframe.attr("src")
+                if (src.isNotBlank()) {
                     foundLinks = true
-                    callback.invoke(
-                        ExtractorLink(
-                            name,
-                            "Fushaar Stream",
-                            url,
-                            mainUrl,
-                            getQualityFromName(url),
-                            false
-                        )
-                    )
+                    loadExtractor(src, data, subtitleCallback, callback)
                 }
             }
-
+            
+            // If no links found, try POST request
+            if (!foundLinks) {
+                try {
+                    val postDoc = app.post(data, data = mapOf("view" to "1")).document
+                    
+                    postDoc.select("a[href*='.mp4'], a[href*='.m3u8']").forEach { element ->
+                        val url = element.attr("href")
+                        if (url.isNotBlank()) {
+                            foundLinks = true
+                            loadExtractor(url, data, subtitleCallback, callback)
+                        }
+                    }
+                } catch (e: Exception) {
+                    // POST failed, continue
+                }
+            }
+            
         } catch (e: Exception) {
             // Fallback if everything fails
         }
         
         return foundLinks
-    }
-
-    private fun getQualityFromName(url: String): Int {
-        return when {
-            url.contains("240p") -> 240
-            url.contains("480p") -> 480
-            url.contains("720p") -> 720
-            url.contains("1080p") -> 1080
-            url.contains("FullHD") -> 1080
-            else -> 0 // Use 0 for unknown quality
-        }
-    }
-
-    private fun getQualityFromText(text: String): Int {
-        return when {
-            text.contains("240p") || text.contains("240/SD") -> 240
-            text.contains("480p") || text.contains("480/Web") -> 480
-            text.contains("720p") || text.contains("720/HD") -> 720
-            text.contains("1080p") || text.contains("1080/FullHD") -> 1080
-            else -> 0
-        }
     }
 }
