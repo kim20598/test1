@@ -2,8 +2,6 @@ package com.egydead
 
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
-import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
 import java.util.Locale
 
 // Data classes for subtitle APIs
@@ -96,11 +94,11 @@ object SubUtils {
             }
 
             val response = app.get(url).text
-            val gson = Gson()
-            val listType = object : TypeToken<List<WyZIESUB>>() {}.type
-            val subtitles: List<WyZIESUB> = gson.fromJson(response, listType)
             
-            subtitles.forEach { subtitle ->
+            // Use CloudStream's built-in JSON parsing instead of Gson
+            val subtitles = tryParseJson<List<WyZIESUB>>(response)
+            
+            subtitles?.forEach { subtitle ->
                 val language = (subtitle.display ?: "Unknown").capitalizeLanguage()
                 val subUrl = subtitle.url ?: return@forEach
                 
