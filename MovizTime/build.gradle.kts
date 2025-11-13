@@ -4,7 +4,7 @@ version = 1
 cloudstream {
     language = "ar"
     
-    authors = listOf("your_name") // Change this
+    authors = listOf("kim20598") // Change this
     
     /**
      * Status int as the following:
