@@ -189,7 +189,8 @@ class EgyDead : MainAPI() {
             
             val postDoc = app.post(data, data = mapOf("View" to "1")).document
             
-            doc.select(".donwload-servers-list > li, .download-servers > li").forEach { element ->
+            // FIXED: Use postDoc instead of doc for video links
+            postDoc.select(".donwload-servers-list > li, .download-servers > li").forEach { element ->
                 val url = element.select("a").attr("href")
                 if (url.isNotBlank()) {
                     foundLinks = true
@@ -197,7 +198,8 @@ class EgyDead : MainAPI() {
                 }
             }
             
-            doc.select("ul.serversList > li, [data-link]").forEach { li ->
+            // FIXED: Use postDoc instead of doc for video links
+            postDoc.select("ul.serversList > li, [data-link]").forEach { li ->
                 val iframeUrl = li.attr("data-link").ifBlank { li.select("a").attr("href") }
                 if (iframeUrl.isNotBlank() && iframeUrl.contains("http")) {
                     foundLinks = true
