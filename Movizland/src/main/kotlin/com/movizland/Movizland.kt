@@ -3,7 +3,7 @@ package com.movizland
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
-import com.lagradost.cloudstream3.utils.amap
+import com.lagradost.cloudstream3.utils.amap // <<< THIS IS THE FIX
 import org.jsoup.nodes.Element
 import kotlinx.serialization.Serializable
 
