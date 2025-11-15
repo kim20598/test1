@@ -1,363 +1,203 @@
-package com.movizland
+> Configure project :akwam
+Fetching JAR
 
-import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
-import com.lagradost.cloudstream3.utils.*
-import org.jsoup.nodes.Element
-import java.net.URLEncoder
+> Task :akwam:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :akwam:preBuild UP-TO-DATE
+> Task :akwam:preDebugBuild UP-TO-DATE
+> Task :akwam:generateDebugResValues
+> Task :akwam:generateDebugResources
+> Task :akwam:packageDebugResources
+> Task :Arabseed:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :Arabseed:preBuild UP-TO-DATE
+> Task :Arabseed:preDebugBuild UP-TO-DATE
+> Task :akwam:javaPreCompileDebug
+> Task :Arabseed:generateDebugResValues
+> Task :Arabseed:generateDebugResources
+> Task :Arabseed:packageDebugResources
+> Task :akwam:parseDebugLocalResources
+> Task :Arabseed:parseDebugLocalResources
+> Task :egydead:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :egydead:preBuild UP-TO-DATE
+> Task :Arabseed:javaPreCompileDebug
+> Task :egydead:preDebugBuild UP-TO-DATE
+> Task :egydead:generateDebugResValues
+> Task :egydead:generateDebugResources
+> Task :Arabseed:generateDebugRFile
+> Task :akwam:generateDebugRFile
+> Task :egydead:packageDebugResources
+> Task :akwam:compileDebugKotlin
+> Task :Arabseed:compileDebugKotlin
 
-class MovizLand : MainAPI() {
-    override var mainUrl = "https://en.movizlands.com"
-    override var name = "MovizLand"
-    override val hasMainPage = true
-    override var lang = "en"
-    override val supportedTypes = setOf(
-        TvType.Movie,
-        TvType.TvSeries,
-        TvType.Anime,
-        TvType.AsianDrama
-    )
+> Task :akwam:compileDex
+Compiled dex to /home/runner/work/TestPlugins1/TestPlugins1/src/akwam/build/intermediates/classes.dex
 
-    // Helper functions
-    private fun String.toAbsolute(): String {
-        return when {
-            this.startsWith("http") -> this
-            this.startsWith("//") -> "https:$this"
-            this.startsWith("/") -> "$mainUrl$this"
-            else -> "$mainUrl/$this"
-        }
-    }
+> Task :akwam:compileDebugJavaWithJavac NO-SOURCE
+> Task :akwam:bundleLibRuntimeToJarDebug
 
-    private fun String.cleanTitle(): String {
-        return this
-            .replace(Regex("\\(\\d{4}\\)"), "")
-            .replace(Regex("Season \\d+"), "")
-            .replace("Watch", "")
-            .replace("مشاهدة", "")
-            .replace("مسلسل", "")
-            .replace("فيلم", "")
-            .replace("انمي", "")
-            .trim()
-    }
+> Task :Arabseed:compileDebugKotlin
+w: ATTENTION!
+This build uses unsafe internal compiler arguments:
 
-    private fun Element.toSearchResponse(): SearchResponse? {
-        return try {
-            val article = this
-            val href = article.selectFirst("a")?.attr("href")?.toAbsolute() ?: return null
-            val title = article.selectFirst(".h-title, .film-name, h3")?.text()?.cleanTitle() 
-                ?: return null
-            
-            val posterUrl = article.selectFirst("img")?.let { img ->
-                img.attr("data-src").ifBlank { img.attr("src") }.toAbsolute()
-            }
+-XXLanguage:+BreakContinueInInlineLambdas
 
-            val quality = article.selectFirst(".quality")?.text()
-            val type = when {
-                href.contains("/series/") || href.contains("/season/") -> TvType.TvSeries
-                href.contains("/anime/") -> TvType.Anime
-                href.contains("/asian/") -> TvType.AsianDrama
-                else -> TvType.Movie
-            }
+This mode is not recommended for production use,
+as no stability/compatibility guarantees are given on
+compiler or generated code. Use it at your own risk!
 
-            newMovieSearchResponse(title, href, type) {
-                this.posterUrl = posterUrl
-                quality?.let {
-                    this.quality = when {
-                        it.contains("1080") -> SearchQuality.HD
-                        it.contains("720") -> SearchQuality.HD
-                        else -> null
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            null
-        }
-    }
 
-    override val mainPage = mainPageOf(
-        "$mainUrl/category/movies/page/" to "Movies",
-        "$mainUrl/category/series/page/" to "TV Series",
-        "$mainUrl/category/asian-series/page/" to "Asian Drama",
-        "$mainUrl/category/anime/page/" to "Anime",
-        "$mainUrl/category/netflix/page/" to "Netflix",
-        "$mainUrl/category/disney/page/" to "Disney+",
-        "$mainUrl/category/hbo/page/" to "HBO",
-        "$mainUrl/category/prime-video/page/" to "Prime Video",
-        "$mainUrl/category/apple-tv/page/" to "Apple TV+",
-        "$mainUrl/category/action/page/" to "Action",
-        "$mainUrl/category/adventure/page/" to "Adventure",
-        "$mainUrl/category/animation/page/" to "Animation",
-        "$mainUrl/category/comedy/page/" to "Comedy",
-        "$mainUrl/category/crime/page/" to "Crime",
-        "$mainUrl/category/drama/page/" to "Drama",
-        "$mainUrl/category/fantasy/page/" to "Fantasy",
-        "$mainUrl/category/horror/page/" to "Horror",
-        "$mainUrl/category/mystery/page/" to "Mystery",
-        "$mainUrl/category/romance/page/" to "Romance",
-        "$mainUrl/category/sci-fi/page/" to "Sci-Fi",
-        "$mainUrl/category/thriller/page/" to "Thriller"
-    )
+> Task :akwam:processDebugJavaRes
+> Task :akwam:createFullJarDebug
 
-    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val url = request.data + page
-        val document = app.get(url).document
+> Task :akwam:compilePluginJar
+Made Cloudstream cross-platform package at /home/runner/work/TestPlugins1/TestPlugins1/src/akwam/build/akwam.jar
 
-        val items = document.select(
-            "article.post, div.film_list-wrap article, div.flw-item, .content-box"
-        ).mapNotNull { element ->
-            element.toSearchResponse()
-        }
+> Task :akwam:make
+Made Cloudstream package at /home/runner/work/TestPlugins1/TestPlugins1/src/akwam/build/akwam.cs3
 
-        return newHomePageResponse(request.name, items)
-    }
+> Task :Arabseed:compileDex
+Compiled dex to /home/runner/work/TestPlugins1/TestPlugins1/src/Arabseed/build/intermediates/classes.dex
 
-    override suspend fun search(query: String): List<SearchResponse> {
-        val searchUrl = "$mainUrl/?s=${URLEncoder.encode(query, "UTF-8")}"
-        val document = app.get(searchUrl).document
+> Task :Arabseed:compileDebugJavaWithJavac NO-SOURCE
+> Task :Arabseed:bundleLibRuntimeToJarDebug
+> Task :Arabseed:processDebugJavaRes
+> Task :Arabseed:createFullJarDebug
 
-        return document.select(
-            "article.post, div.film_list-wrap article, .search-item, .result-item"
-        ).mapNotNull { element ->
-            element.toSearchResponse()
-        }
-    }
+> Task :Arabseed:compilePluginJar
+Made Cloudstream cross-platform package at /home/runner/work/TestPlugins1/TestPlugins1/src/Arabseed/build/Arabseed.jar
 
-    override suspend fun load(url: String): LoadResponse {
-        val document = app.get(url).document
+> Task :Arabseed:make
+Made Cloudstream package at /home/runner/work/TestPlugins1/TestPlugins1/src/Arabseed/build/Arabseed.cs3
 
-        val title = document.selectFirst("h1.title, h1.film-title, .movie-title h1")
-            ?.text()
-            ?.cleanTitle() 
-            ?: "Unknown"
+> Task :ExampleProvider:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :ExampleProvider:preBuild UP-TO-DATE
+> Task :ExampleProvider:preDebugBuild UP-TO-DATE
+> Task :egydead:javaPreCompileDebug
+> Task :egydead:parseDebugLocalResources
+> Task :ExampleProvider:dataBindingMergeDependencyArtifactsDebug
+> Task :ExampleProvider:generateDebugResValues
+> Task :egydead:generateDebugRFile
+> Task :ExampleProvider:generateDebugResources
+> Task :ExampleProvider:packageDebugResources
+> Task :ExampleProvider:parseDebugLocalResources
+> Task :ExampleProvider:generateDebugBuildConfig
+> Task :ExampleProvider:dataBindingGenBaseClassesDebug
+> Task :fajrshow:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :fajrshow:preBuild UP-TO-DATE
+> Task :fajrshow:preDebugBuild UP-TO-DATE
+> Task :ExampleProvider:generateDebugRFile
+> Task :fajrshow:generateDebugResValues
+> Task :ExampleProvider:processDebugManifest
 
-        val posterUrl = document.selectFirst(
-            "meta[property='og:image'], .film-poster img, .movie-thumbnail img"
-        )?.let { element ->
-            if (element.tagName() == "meta") {
-                element.attr("content")
-            } else {
-                element.attr("src").ifBlank { element.attr("data-src") }
-            }.toAbsolute()
-        }
+> Task :egydead:compileDebugKotlin
+w: file:///home/runner/work/TestPlugins1/TestPlugins1/src/egydead/src/main/kotlin/com/egydead/SubUtils.kt:72:25 'constructor(lang: String, url: String): SubtitleFile' is deprecated. Use newSubtitleFile method.
+w: file:///home/runner/work/TestPlugins1/TestPlugins1/src/egydead/src/main/kotlin/com/egydead/SubUtils.kt:106:21 'constructor(lang: String, url: String): SubtitleFile' is deprecated. Use newSubtitleFile method.
 
-        val plot = document.selectFirst(
-            ".description, .film-description, .synopsis, [itemprop='description']"
-        )?.text()?.trim()
+> Task :ExampleProvider:compileResources
+/home/runner/work/TestPlugins1/TestPlugins1/src/ExampleProvider/src/main/res/drawable/ic_android_24dp.xml: note: compiling XML.
+/home/runner/work/TestPlugins1/TestPlugins1/src/ExampleProvider/src/main/res/layout/fragment_blank.xml: note: compiling XML.
+note: including /usr/local/lib/android/sdk/platforms/android-35/android.jar.
+note: linking package 'com.example' using package ID 7f.
+note: merging archive /tmp/res4430418167599543330.zip.
+note: merging 'drawable/ic_android_24dp' from compiled file /home/runner/work/TestPlugins1/TestPlugins1/src/ExampleProvider/src/main/res/drawable/ic_android_24dp.xml.
+note: merging 'layout/fragment_blank' from compiled file /home/runner/work/TestPlugins1/TestPlugins1/src/ExampleProvider/src/main/res/layout/fragment_blank.xml.
+note: enabling pre-O feature split ID rewriting.
+note: collapsing resource versions for minimum SDK 21.
+AndroidManifest.xml: note: writing to archive (keep_raw_values=false).
+note: writing AndroidManifest.xml to archive.
+note: linking /home/runner/work/TestPlugins1/TestPlugins1/src/ExampleProvider/src/main/res/drawable/ic_android_24dp.xml (com.example:drawable/ic_android_24dp).
+res/drawable/ic_android_24dp.xml: note: writing to archive (keep_raw_values=false).
+note: writing res/drawable/ic_android_24dp.xml to archive.
+note: linking /home/runner/work/TestPlugins1/TestPlugins1/src/ExampleProvider/src/main/res/layout/fragment_blank.xml (com.example:layout/fragment_blank).
+res/layout/fragment_blank.xml: note: writing to archive (keep_raw_values=false).
+note: writing res/layout/fragment_blank.xml to archive.
+note: writing resources.arsc to archive.
 
-        val year = document.selectFirst(
-            ".year, .film-year, .movie-year, time"
-        )?.text()?.filter { it.isDigit() }?.toIntOrNull()
+> Task :egydead:compileDex
+Compiled dex to /home/runner/work/TestPlugins1/TestPlugins1/src/egydead/build/intermediates/classes.dex
 
-        val tags = document.select(
-            ".genre a, .film-genre a, [rel='category tag']"
-        ).map { it.text().trim() }
+> Task :egydead:compileDebugJavaWithJavac NO-SOURCE
+> Task :egydead:bundleLibRuntimeToJarDebug
+> Task :egydead:processDebugJavaRes
+> Task :egydead:createFullJarDebug
 
-        val duration = document.selectFirst(
-            ".duration, .film-duration, .movie-duration"
-        )?.text()?.filter { it.isDigit() }?.toIntOrNull()
+> Task :egydead:compilePluginJar
+Made Cloudstream cross-platform package at /home/runner/work/TestPlugins1/TestPlugins1/src/egydead/build/egydead.jar
 
-        val trailer = document.selectFirst(
-            "iframe[src*='youtube'], iframe[src*='youtu.be']"
-        )?.attr("src")
+> Task :egydead:make
+Made Cloudstream package at /home/runner/work/TestPlugins1/TestPlugins1/src/egydead/build/egydead.cs3
 
-        val recommendations = document.select(
-            ".related-posts article, .film-related article, .recommendations .item"
-        ).mapNotNull { it.toSearchResponse() }
+> Task :fajrshow:generateDebugResources
+> Task :fajrshow:packageDebugResources
+> Task :fushaar:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :fajrshow:parseDebugLocalResources
+> Task :fajrshow:javaPreCompileDebug
+> Task :fushaar:preBuild UP-TO-DATE
+> Task :fushaar:preDebugBuild UP-TO-DATE
+> Task :fajrshow:generateDebugRFile
+> Task :fushaar:generateDebugResValues
+> Task :fushaar:generateDebugResources
+> Task :fushaar:packageDebugResources
+> Task :fushaar:parseDebugLocalResources
+> Task :fushaar:javaPreCompileDebug
+> Task :Movizland:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :Movizland:preBuild UP-TO-DATE
+> Task :Movizland:preDebugBuild UP-TO-DATE
+> Task :fushaar:generateDebugRFile
+> Task :Movizland:generateDebugResValues
+> Task :Movizland:generateDebugResources
+> Task :Movizland:packageDebugResources
+> Task :Movizland:parseDebugLocalResources
+> Task :Movizland:generateDebugRFile
+> Task :ExampleProvider:compileDebugKotlin
 
-        // Check if it's a series or movie
-        val isSeries = url.contains("/series/") || 
-                      url.contains("/season/") || 
-                      document.select(".episodes-list, .season-list").isNotEmpty()
+> Task :ExampleProvider:compileDex
+Compiled dex to /home/runner/work/TestPlugins1/TestPlugins1/src/ExampleProvider/build/intermediates/classes.dex
 
-        return if (isSeries) {
-            val episodes = mutableListOf<Episode>()
-            
-            // Handle seasons
-            val seasonsElements = document.select(".season-list li a, .seasons-tabs a")
-            
-            if (seasonsElements.isNotEmpty()) {
-                // Multiple seasons
-                seasonsElements.forEach { seasonElement ->
-                    val seasonUrl = seasonElement.attr("href").toAbsolute()
-                    val seasonNum = seasonElement.text()
-                        .filter { it.isDigit() }
-                        .toIntOrNull() ?: 1
-                    
-                    val seasonDoc = app.get(seasonUrl).document
-                    seasonDoc.select(".episodes-list a, .episode-item").forEach { ep ->
-                        val epUrl = ep.attr("href").toAbsolute()
-                        val epNum = ep.text().filter { it.isDigit() }.toIntOrNull() ?: 0
-                        val epTitle = ep.text()
+> Task :ExampleProvider:make
+Made Cloudstream package at /home/runner/work/TestPlugins1/TestPlugins1/src/ExampleProvider/build/ExampleProvider.cs3
 
-                        episodes.add(
-                            newEpisode(epUrl) {
-                                this.name = epTitle
-                                this.season = seasonNum
-                                this.episode = epNum
-                            }
-                        )
-                    }
-                }
-            } else {
-                // Single season or direct episodes
-                document.select(".episodes-list a, .episode-item, ul.episodesList li a")
-                    .forEach { ep ->
-                        val epUrl = ep.attr("href").toAbsolute()
-                        val epNum = ep.text().filter { it.isDigit() }.toIntOrNull() ?: 0
-                        val epTitle = ep.text()
+> Task :Movizland:javaPreCompileDebug
+> Task :MovizTime:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :MovizTime:preBuild UP-TO-DATE
+> Task :MovizTime:preDebugBuild UP-TO-DATE
+> Task :MovizTime:generateDebugResValues
+> Task :MovizTime:generateDebugResources
+> Task :MovizTime:packageDebugResources
+> Task :MovizTime:parseDebugLocalResources
+> Task :MovizTime:generateDebugRFile
+> Task :fajrshow:compileDebugKotlin
 
-                        episodes.add(
-                            newEpisode(epUrl) {
-                                this.name = epTitle
-                                this.season = 1
-                                this.episode = epNum
-                            }
-                        )
-                    }
-            }
+> Task :Movizland:compileDebugKotlin FAILED
+e: file:///home/runner/work/TestPlugins1/TestPlugins1/src/Movizland/src/main/kotlin/com/movizland/Movizland.kt:275:21 'constructor(source: String, name: String, url: String, referer: String, quality: Int, isM3u8: Boolean = ..., headers: Map<String, String> = ..., extractorData: String? = ...): ExtractorLink' is deprecated. Use newExtractorLink.
+e: file:///home/runner/work/TestPlugins1/TestPlugins1/src/Movizland/src/main/kotlin/com/movizland/Movizland.kt:343:25 'constructor(source: String, name: String, url: String, referer: String, quality: Int, isM3u8: Boolean = ..., headers: Map<String, String> = ..., extractorData: String? = ...): ExtractorLink' is deprecated. Use newExtractorLink.
 
-            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
-                this.posterUrl = posterUrl
-                this.plot = plot
-                this.year = year
-                this.tags = tags
-                this.duration = duration
-                this.recommendations = recommendations
-                addTrailer(trailer)
-            }
-        } else {
-            newMovieLoadResponse(title, url, TvType.Movie, url) {
-                this.posterUrl = posterUrl
-                this.plot = plot
-                this.year = year
-                this.tags = tags
-                this.duration = duration
-                this.recommendations = recommendations
-                addTrailer(trailer)
-            }
-        }
-    }
+> Task :fushaar:compileDebugKotlin
 
-    override suspend fun loadLinks(
-        data: String,
-        isCasting: Boolean,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ): Boolean {
-        val document = app.get(data).document
-        var foundLinks = false
+> Task :fajrshow:compileDex
+Compiled dex to /home/runner/work/TestPlugins1/TestPlugins1/src/fajrshow/build/intermediates/classes.dex
 
-        // Extract subtitles
-        document.select("track[kind='captions']").forEach { track ->
-            val src = track.attr("src").toAbsolute()
-            val label = track.attr("label") ?: "Unknown"
-            val lang = track.attr("srclang") ?: "en"
-            
-            subtitleCallback.invoke(
-                SubtitleFile(
-                    lang = "$label ($lang)",
-                    url = src
-                )
-            )
-        }
+> Task :MovizTime:compileDebugKotlin
 
-        // Method 1: Direct video links
-        document.select("source[src], video source").forEach { source ->
-            val videoUrl = source.attr("src").toAbsolute()
-            val quality = source.attr("size")?.toIntOrNull() 
-                ?: source.attr("res")?.toIntOrNull()
-                ?: Qualities.Unknown.value
+[Incubating] Problems report is available at: file:///home/runner/work/TestPlugins1/TestPlugins1/src/build/reports/problems/problems-report.html
 
-            if (videoUrl.isNotBlank()) {
-                foundLinks = true
-                callback.invoke(
-                    ExtractorLink(
-                        this.name,
-                        "Direct",
-                        videoUrl,
-                        data,
-                        quality,
-                        videoUrl.contains(".m3u8")
-                    )
-                )
-            }
-        }
+FAILURE: Build failed with an exception.
 
-        // Method 2: iframes
-        document.select("iframe").forEach { iframe ->
-            val iframeUrl = iframe.attr("src").toAbsolute()
-            if (iframeUrl.isNotBlank() && !iframeUrl.contains("youtube")) {
-                foundLinks = true
-                loadExtractor(iframeUrl, data, subtitleCallback, callback)
-            }
-        }
+* What went wrong:
+Execution failed for task ':Movizland:compileDebugKotlin'.
+> A failure occurred while executing org.jetbrains.kotlin.compilerRunner.GradleCompilerRunnerWithWorkers$GradleKotlinCompilerWorkAction
+   > Compilation error. See log for more details
 
-        // Method 3: Player containers with data attributes
-        document.select("[data-player-src], [data-src], .player-embed").forEach { element ->
-            val playerUrl = (element.attr("data-player-src")
-                .ifBlank { element.attr("data-src") }
-                .ifBlank { element.attr("src") }).toAbsolute()
-            
-            if (playerUrl.isNotBlank()) {
-                foundLinks = true
-                loadExtractor(playerUrl, data, subtitleCallback, callback)
-            }
-        }
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
 
-        // Method 4: AJAX server switching (if the site uses it)
-        document.select(".server-item, [data-server]").forEach { serverElement ->
-            val serverId = serverElement.attr("data-server")
-                .ifBlank { serverElement.attr("data-id") }
-            val serverNum = serverElement.attr("data-num")
-            
-            if (serverId.isNotBlank()) {
-                try {
-                    val serverUrl = "$mainUrl/ajax/server/$serverId/$serverNum"
-                    val serverResponse = app.get(
-                        serverUrl,
-                        headers = mapOf(
-                            "X-Requested-With" to "XMLHttpRequest",
-                            "Referer" to data
-                        )
-                    ).parsedSafe<ServerResponse>()
-                    
-                    serverResponse?.embed?.let { embedUrl ->
-                        foundLinks = true
-                        loadExtractor(embedUrl, data, subtitleCallback, callback)
-                    }
-                } catch (e: Exception) {
-                    // Server request failed, continue
-                }
-            }
-        }
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 9.0.
 
-        // Method 5: Check for encrypted/protected content
-        val scripts = document.select("script").html()
-        Regex("""(?:source|src|file)["']?\s*[:=]\s*["']([^"']+\.(?:mp4|m3u8|mkv))["']""")
-            .findAll(scripts).forEach { match ->
-                val videoUrl = match.groupValues[1].toAbsolute()
-                if (videoUrl.isNotBlank()) {
-                    foundLinks = true
-                    callback.invoke(
-                        ExtractorLink(
-                            this.name,
-                            "Direct",
-                            videoUrl,
-                            data,
-                            Qualities.Unknown.value,
-                            videoUrl.contains(".m3u8")
-                        )
-                    )
-                }
-            }
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
 
-        return foundLinks
-    }
+For more on this, please refer to https://docs.gradle.org/8.12/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+80 actionable tasks: 80 executed
 
-    // Data class for AJAX responses
-    data class ServerResponse(
-        val embed: String? = null,
-        val url: String? = null,
-        val status: Boolean? = null
-    )
-}
+BUILD FAILED in 3m 39s
