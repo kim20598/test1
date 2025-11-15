@@ -3,7 +3,7 @@ package com.movizland
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
-import com.lagradost.cloudstream3.utils.amap // <<< THIS LINE FIXES THE BUILD ERROR
+import com.lagradost.cloudstream3.utils.amap  // <-- ADD THIS IMPORT
 import org.jsoup.nodes.Element
 import kotlinx.serialization.Serializable
 
