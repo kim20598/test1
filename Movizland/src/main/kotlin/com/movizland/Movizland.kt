@@ -157,7 +157,7 @@ class Movizland : MainAPI() {
         return foundLinks
     }
 
-    private fun extractLinksFromDocument(
+    private suspend fun extractLinksFromDocument(
         doc: org.jsoup.nodes.Document,
         data: String,
         subtitleCallback: (SubtitleFile) -> Unit,
