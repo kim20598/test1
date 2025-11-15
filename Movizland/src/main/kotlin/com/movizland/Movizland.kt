@@ -254,7 +254,7 @@ class MovizLand : MainAPI() {
             val label = track.attr("label") ?: "Unknown"
             val lang = track.attr("srclang") ?: "en"
             
-            subtitleCallback(
+            subtitleCallback.invoke(
                 SubtitleFile(
                     lang = "$label ($lang)",
                     url = src
@@ -271,14 +271,14 @@ class MovizLand : MainAPI() {
 
             if (videoUrl.isNotBlank()) {
                 foundLinks = true
-                callback(
+                callback.invoke(
                     ExtractorLink(
-                        source = this.name,
-                        name = this.name,
-                        url = videoUrl,
-                        referer = data,
-                        quality = quality,
-                        isM3u8 = videoUrl.contains(".m3u8")
+                        this.name,
+                        "Direct",
+                        videoUrl,
+                        data,
+                        quality,
+                        videoUrl.contains(".m3u8")
                     )
                 )
             }
@@ -339,14 +339,14 @@ class MovizLand : MainAPI() {
                 val videoUrl = match.groupValues[1].toAbsolute()
                 if (videoUrl.isNotBlank()) {
                     foundLinks = true
-                    callback(
+                    callback.invoke(
                         ExtractorLink(
-                            source = this.name,
-                            name = this.name,
-                            url = videoUrl,
-                            referer = data,
-                            quality = Qualities.Unknown.value,
-                            isM3u8 = videoUrl.contains(".m3u8")
+                            this.name,
+                            "Direct",
+                            videoUrl,
+                            data,
+                            Qualities.Unknown.value,
+                            videoUrl.contains(".m3u8")
                         )
                     )
                 }
