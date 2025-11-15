@@ -155,7 +155,8 @@ class MovizLand : MainAPI() {
             ".genre a, .film-genre a, [rel='category tag']"
         ).map { it.text().trim() }
 
-        val rating = document.selectFirst(
+        // Fixed: Using score instead of rating
+        val ratingValue = document.selectFirst(
             ".rating, .imdb, .film-rating"
         )?.text()?.toDoubleOrNull()
 
@@ -228,7 +229,8 @@ class MovizLand : MainAPI() {
                 this.plot = plot
                 this.year = year
                 this.tags = tags
-                this.rating = rating
+                // Use score instead of rating - convert to scale of 1000
+                ratingValue?.let { this.score = (it * 100).toInt() }
                 this.duration = duration
                 this.recommendations = recommendations
                 addTrailer(trailer)
@@ -239,7 +241,8 @@ class MovizLand : MainAPI() {
                 this.plot = plot
                 this.year = year
                 this.tags = tags
-                this.rating = rating
+                // Use score instead of rating - convert to scale of 1000
+                ratingValue?.let { this.score = (it * 100).toInt() }
                 this.duration = duration
                 this.recommendations = recommendations
                 addTrailer(trailer)
@@ -279,15 +282,17 @@ class MovizLand : MainAPI() {
 
             if (videoUrl.isNotBlank()) {
                 foundLinks = true
+                // Fixed: Use newExtractorLink instead of constructor
                 callback(
-                    ExtractorLink(
+                    newExtractorLink(
                         source = this.name,
                         name = this.name,
                         url = videoUrl,
-                        referer = data,
-                        quality = quality,
-                        isM3u8 = videoUrl.contains(".m3u8")
-                    )
+                        type = if (videoUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                    ) {
+                        this.referer = data
+                        this.quality = quality
+                    }
                 )
             }
         }
@@ -347,15 +352,17 @@ class MovizLand : MainAPI() {
                 val videoUrl = match.groupValues[1].toAbsolute()
                 if (videoUrl.isNotBlank()) {
                     foundLinks = true
+                    // Fixed: Use newExtractorLink instead of constructor
                     callback(
-                        ExtractorLink(
+                        newExtractorLink(
                             source = this.name,
                             name = this.name,
                             url = videoUrl,
-                            referer = data,
-                            quality = Qualities.Unknown.value,
-                            isM3u8 = videoUrl.contains(".m3u8")
-                        )
+                            type = if (videoUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                        ) {
+                            this.referer = data
+                            this.quality = Qualities.Unknown.value
+                        }
                     )
                 }
             }
