@@ -3,125 +3,115 @@ package com.movizland
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
+import com.lagradost.cloudstream3.utils.amap
 import org.jsoup.nodes.Element
-import java.net.URLEncoder
+import kotlinx.serialization.Serializable
 
 class Movizland : MainAPI() {
     override var mainUrl = "https://en.movizlands.com"
     override var name = "Movizland"
     override val hasMainPage = true
-    override var lang = "ar"
-    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries, TvType.Anime)
-    override val usesWebView = false
+    override var lang = "en"
+    override val supportedTypes = setOf(TvType.Movie, TvType.TvSeries)
 
-    // Add proper user agent to bypass basic protection
-    private val headers = mapOf(
-        "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-        "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-        "Accept-Language" to "en-US,en;q=0.5",
-        "Accept-Encoding" to "gzip, deflate, br",
-        "Connection" to "keep-alive"
-    )
-
+    // Helper to parse a single content block from main/search pages
     private fun Element.toSearchResult(): SearchResponse? {
-        // Try multiple selectors
-        val title = selectFirst("h3, h2, .title, .entry-title, .post-title")?.text()?.trim() ?: return null
-        val href = selectFirst("a")?.attr("href") ?: return null
-        val posterUrl = selectFirst("img")?.attr("src").let { 
-            it ?: selectFirst("img")?.attr("data-src")
-        }
+        val link = this.selectFirst("a") ?: return null
+        val href = link.attr("href")
+        if (href.isBlank()) return null
 
-        val type = when {
-            href.contains("/series/") || href.contains("مسلسل") || title.contains("مسلسل") -> TvType.TvSeries
-            href.contains("/anime/") || href.contains("انمي") || title.contains("انمي") -> TvType.Anime
-            else -> TvType.Movie
-        }
+        val title = this.selectFirst(".Block--Name")?.text()?.trim() ?: return null
+        val posterUrl = this.selectFirst("img.lazyload")?.attr("data-src")
 
-        return newMovieSearchResponse(title, href, type) {
+        val tvType = when {
+            href.contains("/movie/") -> TvType.Movie
+            href.contains("/series/") -> TvType.TvSeries
+            else -> null // Ignore items that are not movies or series
+        } ?: return null
+
+        return newMovieSearchResponse(title, href, tvType) {
             this.posterUrl = posterUrl
         }
     }
 
-    // Simplified main page with fewer categories for testing
+    // Define the main page sections
     override val mainPage = mainPageOf(
-        "$mainUrl/" to "Home | الرئيسية",
-        "$mainUrl/category/افلام-اجنبي/" to "Foreign Movies | أفلام أجنبي",
-        "$mainUrl/category/مسلسلات-اجنبي/" to "Foreign Series | مسلسلات أجنبي",
-        "$mainUrl/category/افلام-انمي/" to "Anime Movies | أفلام أنمي"
+        "$mainUrl/movies/page/" to "Latest Movies",
+        "$mainUrl/series/page/" to "Latest TV-Series",
+        "$mainUrl/category/action/page/" to "Action",
+        "$mainUrl/category/comedy/page/" to "Comedy",
+        "$mainUrl/category/horror/page/" to "Horror",
+        "$mainUrl/category/romance/page/" to "Romance",
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val url = if (page > 1) "${request.data}page/$page/" else request.data
-        val document = app.get(url, headers = headers).document
+        val url = "${request.data}$page/"
+        val document = app.get(url).document
 
-        // Try multiple selectors
-        val items = document.select("article, section, .movie, .item, .post, .poster").mapNotNull {
+        val items = document.select("div.Block").mapNotNull {
             it.toSearchResult()
         }
-
-        // If no items found, try to debug
-        if (items.isEmpty()) {
-            println("DEBUG: No items found for URL: $url")
-            println("DEBUG: Page title: ${document.selectFirst("title")?.text()}")
-            println("DEBUG: Found elements: ${document.select("article, section, .movie, .item").size}")
-        }
-
         return newHomePageResponse(request.name, items)
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        if (query.length < 3) return emptyList()
-        
-        val encodedQuery = URLEncoder.encode(query, "UTF-8")
-        val document = app.get("$mainUrl/?s=$encodedQuery", headers = headers).document
-
-        return document.select("article, section, .movie, .item, .post").mapNotNull {
+        val document = app.get("$mainUrl/search/$query/").document
+        return document.select("div.Block").mapNotNull {
             it.toSearchResult()
         }
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val document = app.get(url, headers = headers).document
+        val document = app.get(url).document
+        val title = document.selectFirst("div.Title--Content--Single-left h1")?.text()?.trim() ?: "Unknown"
+        val poster = document.selectFirst("div.Poster--Single-left img")?.attr("src")
+        val plot = document.selectFirst("div.Story p")?.text()?.trim()
+        val year = document.selectFirst("span.Date")?.text()?.toIntOrNull()
+        val tags = document.select("span.Genre a").map { it.text() }
+        val recommendations = document.select("div.Block").mapNotNull { it.toSearchResult() }
 
-        val title = document.selectFirst("h1, .entry-title, .post-title")?.text()?.trim() 
-            ?.replace("مشاهدة|تحميل|مترجم|فيلم|مسلسل".toRegex(), "")?.trim() 
-            ?: "Unknown"
-        
-        val posterUrl = document.selectFirst(".poster img, .single-thumbnail img, .wp-post-image")?.attr("src")
-        val description = document.selectFirst(".entry-content p, .story, .plot, .description")?.text()?.trim()
-        val year = document.selectFirst(".year, .date")?.text()?.toIntOrNull()
-        val tags = document.select(".genre a, .category a, .tags a").map { it.text() }
+        val isTvSeries = url.contains("/series/")
+        return if (isTvSeries) {
+            val episodes = document.select("div.Episodes--Seasons--Episodes ul li a").mapNotNull { epEl ->
+                val epHref = epEl.attr("href")
+                if (epHref.isBlank()) return@mapNotNull null
 
-        // Check if it's a series by looking for episodes
-        val episodes = document.select(".episodes-list a, .episode-link, .episode a").mapNotNull { episodeElement ->
-            val epHref = episodeElement.attr("href")
-            val epTitle = episodeElement.text().trim()
-            val epNum = Regex("\\d+").findAll(epTitle).lastOrNull()?.value?.toIntOrNull()
-
-            if (epHref.isNotBlank()) {
-                newEpisode(epHref) {
-                    name = epTitle
-                    episode = epNum
+                val epName = epEl.attr("title")
+                val (season, episode) = epEl.selectFirst(".Mv--Info-IMDB")?.text().let { info ->
+                    val season = info?.let { Regex("""S (\d+)""").find(it)?.groupValues?.get(1)?.toIntOrNull() }
+                    val episode = info?.let { Regex("""E (\d+)""").find(it)?.groupValues?.get(1)?.toIntOrNull() }
+                    Pair(season, episode)
                 }
-            } else null
-        }
+                newEpisode(epHref) {
+                    name = epName
+                    this.season = season
+                    this.episode = episode
+                }
+            }.reversed() // Episodes are listed newest first, so reverse the list
 
-        return if (episodes.isNotEmpty()) {
             newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
-                this.posterUrl = posterUrl
-                this.plot = description
+                this.posterUrl = poster
                 this.year = year
+                this.plot = plot
                 this.tags = tags
+                this.recommendations = recommendations
             }
         } else {
             newMovieLoadResponse(title, url, TvType.Movie, url) {
-                this.posterUrl = posterUrl
-                this.plot = description
+                this.posterUrl = poster
                 this.year = year
+                this.plot = plot
                 this.tags = tags
+                this.recommendations = recommendations
             }
         }
     }
+
+    // Data class for parsing the JSON response from the site's AJAX endpoint
+    @Serializable
+    data class AjaxResponse(
+        val embed_url: String
+    )
 
     override suspend fun loadLinks(
         data: String,
@@ -129,27 +119,37 @@ class Movizland : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val document = app.get(data, headers = headers).document
-        var foundLinks = false
+        // The player is on a dedicated watch page, which is the content URL + "/watch"
+        val watchUrl = "$data/watch/"
+        val document = app.get(watchUrl).document
 
-        // Try to find iframes
-        document.select("iframe").forEach { iframe ->
-            val src = iframe.attr("src")
-            if (src.isNotBlank() && !src.startsWith("about:")) {
-                foundLinks = true
-                loadExtractor(src, data, subtitleCallback, callback)
+        val postId = document.selectFirst("#player-embed")?.attr("data-post") ?: return false
+
+        // Concurrently fetch the iframe URL for each available server
+        document.select("ul.server_list--menu li").amap { serverEl ->
+            val serverId = serverEl.attr("data-server")
+
+            // Make a POST request to the site's backend to get the server's iframe
+            val response = app.post(
+                url = "$mainUrl/wp-admin/admin-ajax.php",
+                data = mapOf(
+                    "action" to "get_player_ajax",
+                    "post" to postId,
+                    "nume" to serverId
+                ),
+                referer = watchUrl,
+                headers = mapOf("X-Requested-With" to "XMLHttpRequest")
+            ).parsedSafe<AjaxResponse>()
+
+            // Extract the iframe URL from the JSON response and load it
+            response?.embed_url?.let { iframeHtml ->
+                val iframeUrl = Regex("""src=["'](.*?)["']""").find(iframeHtml)?.groupValues?.get(1)
+                if (iframeUrl != null) {
+                    loadExtractor(iframeUrl, watchUrl, subtitleCallback, callback)
+                }
             }
         }
 
-        // Try to find download links
-        document.select("a[href*='.mp4'], a[href*='.m3u8']").forEach { link ->
-            val href = link.attr("href")
-            if (href.isNotBlank()) {
-                foundLinks = true
-                loadExtractor(href, data, subtitleCallback, callback)
-            }
-        }
-
-        return foundLinks
+        return true
     }
 }
