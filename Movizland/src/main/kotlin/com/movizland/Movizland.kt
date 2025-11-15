@@ -84,7 +84,6 @@ class Movizland : MainAPI() {
                 newEpisode(epHref) {
                     name = epTitle
                     episode = epNum
-                    // Remove this line: posterUrl = posterUrl (you can't reassign val properties)
                 }
             } else null
         }
