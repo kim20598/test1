@@ -271,9 +271,10 @@ class MovizLand : MainAPI() {
             if (videoUrl.isNotBlank()) {
                 foundLinks = true
                 callback.invoke(
-                    newExtractorLink(
+                    ExtractorLink(
+                        this.name,
+                        "Direct",
                         videoUrl,
-                        "$name - Direct",
                         data,
                         quality,
                         videoUrl.contains(".m3u8")
@@ -338,9 +339,10 @@ class MovizLand : MainAPI() {
                 if (videoUrl.isNotBlank()) {
                     foundLinks = true
                     callback.invoke(
-                        newExtractorLink(
+                        ExtractorLink(
+                            this.name,
+                            "Direct",
                             videoUrl,
-                            "$name - Direct",
                             data,
                             Qualities.Unknown.value,
                             videoUrl.contains(".m3u8")
