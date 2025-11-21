@@ -53,8 +53,8 @@ class EgyDead : MainAPI() {
         "$mainUrl/category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d8%a7%d9%86%d9%85%d9%8a/?page=" to "Anime Movies | أفلام أنمي",
 
 
-        "$mainUrl/type/thriller/" to "Thriller | إثارة",
-        "$mainUrl/type/action/" to "Action | أكشن",
+        "$mainUrl/type/thriller/?page=" to "Thriller | إثارة",
+        "$mainUrl/type/action/?page=" to "Action | أكشن",
         "$mainUrl/type/animation/" to "Animation | أنيميشن",
         "$mainUrl/type/ecchi/" to "Ecchi | إيتشي",
         "$mainUrl/type/idols/" to "Idols | آيدولز",
