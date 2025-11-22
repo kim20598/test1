@@ -49,8 +49,8 @@ class Animezid : MainAPI() {
 
             // Determine type based on URL
             val type = when {
-                href.contains("/anime/") -> TvType.Anime
-                else -> TvType.Movie
+                href.contains("/movie/") || href.contains("/film/") -> TvType.Movie
+                else -> TvType.Anime
             }
 
             if (type == TvType.Anime) {
@@ -71,8 +71,13 @@ class Animezid : MainAPI() {
 
     override val mainPage = mainPageOf(
         "$mainUrl/anime/" to "أنمي",
-        "$mainUrl/cartoon/" to "كرتون",
-        "$mainUrl/movies/" to "أفلام أنمي"
+        "$mainUrl/cartoon/" to "كرتون", 
+        "$mainUrl/ongoing/" to "مستمر",
+        "$mainUrl/completed/" to "مكتمل",
+        "$mainUrl/movies/" to "أفلام أنمي",
+        "$mainUrl/category/japanese-anime/" to "أنمي ياباني",
+        "$mainUrl/category/chinese-anime/" to "أنمي صيني",
+        "$mainUrl/category/korean-anime/" to "أنمي كوري"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -150,7 +155,7 @@ class Animezid : MainAPI() {
                 }
             }
 
-            val isSeries = episodes.isNotEmpty() || url.contains("/anime/")
+            val isSeries = episodes.isNotEmpty() || url.contains("/anime/") || url.contains("/cartoon/")
 
             if (isSeries) {
                 // If no episodes found but it's a series, create default episode
