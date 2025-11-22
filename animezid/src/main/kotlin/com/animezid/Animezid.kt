@@ -145,7 +145,7 @@ class Animezid : MainAPI() {
                         name = "Animezid Download",
                         source = name,
                         url = downloadUrl,
-                        quality = Qualities.Unknown.value,
+                        quality = Quality.Unknown.value,
                         isM3u8 = false
                     )
                 )
