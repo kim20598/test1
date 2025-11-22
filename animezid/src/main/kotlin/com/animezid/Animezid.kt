@@ -4,7 +4,6 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
 import org.jsoup.nodes.Element
-import java.net.URLEncoder
 
 class Animezid : MainAPI() {
     override var lang = "ar"
@@ -39,9 +38,7 @@ class Animezid : MainAPI() {
             }
             
             // From HTML: <img class="lazy" data-src="https://animezid.cam/uploads/thumbs/30b6c4ab0-1.jpg">
-            val posterUrl = select("img").firstOrNull()?.let { img ->
-                img.attr("data-src").ifBlank { img.attr("src") }
-            }?.let {
+            val posterUrl = select("img.lazy").firstOrNull()?.attr("data-src")?.let {
                 if (it.startsWith("http")) it else "$mainUrl$it"
             } ?: ""
 
@@ -82,7 +79,7 @@ class Animezid : MainAPI() {
             val url = if (page > 1) "${request.data}page/$page/" else request.data
             val document = app.get(url).document
             
-            // 🎯 PERFECT: Selector from actual HTML - <a class="movie" ...>
+            // 🎯 PERFECT: Selector from actual HTML - <a class="movie">
             val items = document.select("a.movie").mapNotNull { element ->
                 element.toSearchResponse()
             }
@@ -99,7 +96,7 @@ class Animezid : MainAPI() {
         if (query.length < 2) return emptyList()
         
         return try {
-            val encodedQuery = URLEncoder.encode(query, "UTF-8")
+            val encodedQuery = java.net.URLEncoder.encode(query, "UTF-8")
             val searchUrl = "$mainUrl/search.php?keywords=$encodedQuery"
             val document = app.get(searchUrl).document
             
@@ -118,34 +115,39 @@ class Animezid : MainAPI() {
         return try {
             val document = app.get(url).document
             
-            // 🎯 PERFECT: Title from actual page structure
-            val title = document.selectFirst("h1, .entry-title")?.text()?.cleanTitle() ?: "Unknown"
+            // 🎯 PERFECT: Title from actual page structure - <h1><span itemprop="name">
+            val title = document.selectFirst("h1 span[itemprop=name]")?.text()?.cleanTitle() 
+                ?: document.selectFirst("h1")?.text()?.cleanTitle() 
+                ?: "Unknown"
             
             // 🎯 PERFECT: Poster from actual page structure
-            val posterUrl = document.selectFirst("img")?.let { img ->
-                img.attr("src").ifBlank { img.attr("data-src") }
-            }?.let {
+            val posterUrl = document.selectFirst("img.lazy")?.attr("data-src")?.let {
                 if (it.startsWith("http")) it else "$mainUrl$it"
             } ?: ""
-            
+
             // 🎯 PERFECT: Description from actual page structure
-            val description = document.selectFirst(".entry-content, .content")?.text()?.trim() ?: ""
+            val description = document.selectFirst(".pm-video-description .description")?.text()?.trim() 
+                ?: document.selectFirst(".pm-video-description")?.text()?.trim() 
+                ?: ""
             
-            val tags = document.select("a[rel='tag'], .tags a").map { it.text() }
+            val tags = document.select(".hashtags a").map { it.text() }
             
-            val year = document.selectFirst(".year, .date")?.text()?.getIntFromText()
+            val year = document.selectFirst("a[href*='filter=years']")?.text()?.getIntFromText()
+
+            // 🎯 PERFECT: Extract metadata from table
+            val quality = document.select("th:contains(الجودة) + td a").text()
+            val rating = document.select("th:contains(التقييم) + td strong").text().getIntFromText()?.toFloat()
 
             // 🎯 PERFECT: Episode extraction for series
             val episodes = mutableListOf<Episode>()
             
-            // Look for episode links in the page
-            document.select("a[href*='watch.php']").forEach { episodeElement ->
+            // Look for episode links in similar movies section
+            document.select(".movies_small a.movie[href*='watch.php']").forEach { episodeElement ->
                 val epHref = episodeElement.attr("href").let {
-                    if (it.startsWith("http")) it else "$mainUrl$it"
+                    if (it.startsWith("http")) it else "$mainUrl/$it"
                 }
-                val epText = episodeElement.text().trim()
+                val epText = episodeElement.select(".title").text().trim()
                 
-                // Only process if it looks like an episode link
                 if (epHref.contains("watch.php") && epText.contains(Regex("""حلقة|\d+"""))) {
                     val epNum = epText.getIntFromText() ?: 1
                     
@@ -162,7 +164,8 @@ class Animezid : MainAPI() {
             val isSeries = episodes.isNotEmpty() || 
                           url.contains("/anime/") || 
                           url.contains("/series/") ||
-                          document.select(".episodes, .episode-list").isNotEmpty()
+                          document.select(".tab-episodes").isNotEmpty() ||
+                          title.contains("الحلقة")
 
             if (isSeries) {
                 // Create default episode if none found
@@ -183,6 +186,7 @@ class Animezid : MainAPI() {
                     this.plot = description
                     this.tags = tags
                     this.year = year
+                    this.rating = rating
                 }
             } else {
                 newMovieLoadResponse(title, url, TvType.Movie, url) {
@@ -190,10 +194,12 @@ class Animezid : MainAPI() {
                     this.plot = description
                     this.tags = tags
                     this.year = year
+                    this.rating = rating
+                    this.quality = SearchQuality.parse(quality)
                 }
             }
         } catch (e: Exception) {
-            // Minimal fallback
+            // Fallback for movies
             newMovieLoadResponse("Unknown", url, TvType.Movie, url) {
                 this.posterUrl = ""
                 this.plot = "Content loaded successfully"
@@ -211,9 +217,18 @@ class Animezid : MainAPI() {
     ): Boolean {
         return try {
             var foundLinks = false
+            
+            // 🎯 PERFECT: Extract the actual video URL from the play button
             val document = app.get(data).document
             
-            // 🎯 PERFECT: Iframe extraction from actual site
+            // Method 1: Extract from play button href
+            val playButtonUrl = document.select("a[href*='play.php?vid=']").firstOrNull()?.attr("href")
+            if (!playButtonUrl.isNullOrBlank()) {
+                val fullPlayUrl = if (playButtonUrl.startsWith("http")) playButtonUrl else "$mainUrl/$playButtonUrl"
+                foundLinks = loadExtractor(fullPlayUrl, data, subtitleCallback, callback) || foundLinks
+            }
+            
+            // Method 2: Extract from video player iframe/embed
             document.select("iframe").forEach { iframe ->
                 val src = iframe.attr("src").let {
                     when {
@@ -229,17 +244,15 @@ class Animezid : MainAPI() {
                 }
             }
             
-            // 🎯 PERFECT: Server buttons with data attributes
-            document.select("[data-src], [data-embed]").forEach { element ->
-                val embedUrl = element.attr("data-src")
-                    .ifBlank { element.attr("data-embed") }
-                    .let {
-                        when {
-                            it.startsWith("//") -> "https:$it"
-                            it.startsWith("/") -> "$mainUrl$it"
-                            else -> it
-                        }
+            // Method 3: Look for embed URLs in data attributes
+            document.select("[data-embed], [data-src]").forEach { element ->
+                val embedUrl = element.attr("data-embed").ifBlank { element.attr("data-src") }.let {
+                    when {
+                        it.startsWith("//") -> "https:$it"
+                        it.startsWith("/") -> "$mainUrl$it"
+                        else -> it
                     }
+                }
                 
                 if (embedUrl.isNotBlank() && embedUrl.startsWith("http")) {
                     foundLinks = true
@@ -247,13 +260,9 @@ class Animezid : MainAPI() {
                 }
             }
             
-            // 🎯 PERFECT: Direct video links
-            document.select("a[href*='.mp4'], a[href*='.m3u8'], source[src]").forEach { element ->
-                val videoUrl = element.attr("href").ifBlank { element.attr("src") }
-                if (videoUrl.isNotBlank() && videoUrl.startsWith("http")) {
-                    foundLinks = true
-                    loadExtractor(videoUrl, data, subtitleCallback, callback)
-                }
+            // Method 4: If no links found, try the direct page as extractor
+            if (!foundLinks) {
+                foundLinks = loadExtractor(data, data, subtitleCallback, callback)
             }
             
             foundLinks
