@@ -142,10 +142,11 @@ class Animezid : MainAPI() {
                 // These are direct download links - create direct extractor link
                 callback(
                     ExtractorLink(
-                        name = "Animezid Download",
                         source = name,
+                        name = "Animezid Download",
                         url = downloadUrl,
-                        quality = null, // Quality parameter removed
+                        referer = mainUrl,
+                        quality = null,
                         isM3u8 = false
                     )
                 )
