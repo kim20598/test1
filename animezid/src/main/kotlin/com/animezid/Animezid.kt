@@ -19,10 +19,21 @@ class Animezid : MainAPI() {
         "$mainUrl/" to "أحدث الإضافات",
         "$mainUrl/anime/" to "أنمي",
         "$mainUrl/movies/" to "أفلام أنمي",
-        "$mainUrl/ongoing/" to "مسلسلات مستمرة", 
+        "$mainUrl/ongoing/" to "مسلسلات مستمرة",
         "$mainUrl/completed/" to "مسلسلات مكتملة",
         "$mainUrl/category.php?cat=disney-masr" to "ديزني بالمصري",
-        "$mainUrl/category.php?cat=spacetoon" to "سبيستون"
+        "$mainUrl/category.php?cat=spacetoon" to "سبيستون",
+        "$mainUrl/category.php?cat=new-movies" to "أحدث الافلام",
+        "$mainUrl/category.php?cat=newvideos" to "أفلام جديدة",
+        "$mainUrl/category.php?cat=subbed-animation" to "أفلام انيميشن مترجمة",
+        "$mainUrl/category.php?cat=dubbed-animation" to "افلام كرتون جديدة",
+        "$mainUrl/category.php?cat=kimetsu-no-yaiba-3" to "قاتل الشياطين الموسم الثالث",
+        "$mainUrl/category.php?cat=one-piece" to "ون بيس",
+        "$mainUrl/category.php?cat=conan-ar" to "المحقق كونان",
+        "$mainUrl/category.php?cat=dragon-ball-super-ar" to "دراغون بول سوبر",
+        "$mainUrl/category.php?cat=attack-on-titan" to "هجوم العمالقة",
+        "$mainUrl/category.php?cat=jujutsu-kaisen-s-2" to "جوجوتسو كايسن الموسم الثاني",
+        "$mainUrl/category.php?cat=miraculous-ar" to "الدعسوقه والقط الاسود"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -47,34 +58,48 @@ class Animezid : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url).document
         
-        // REAL title extraction
-        val title = document.selectFirst("h1")?.text() ?: "Unknown"
+        // REAL title extraction from <h1><span itemprop="name">
+        val title = document.selectFirst("h1 span[itemprop=name]")?.text() 
+            ?: document.selectFirst("h1")?.text() 
+            ?: "Unknown"
         
-        // REAL poster extraction  
+        // REAL poster extraction from img.lazy[data-src]
         val poster = document.selectFirst("img.lazy")?.attr("data-src")?.let { 
             if (it.startsWith("http")) it else "$mainUrl$it"
         } ?: ""
 
-        // REAL description extraction
-        val description = document.selectFirst(".pm-video-description")?.text() ?: ""
+        // REAL description extraction from .pm-video-description
+        val description = document.selectFirst(".pm-video-description")?.text()?.trim() ?: ""
 
-        // Check if it's a movie or series by URL pattern
-        val isMovie = url.contains("/movie/") || url.contains("فيلم") || 
-                     document.select("a[href*='play.php']").isNotEmpty()
+        // Extract year from the table
+        val year = document.selectFirst("a[href*='filter=years']")?.text()?.toIntOrNull()
+
+        // Extract quality from the table
+        val quality = document.select("th:contains(الدقة) + td a").text()
+
+        // Check if it's a movie or series
+        val isMovie = url.contains("فيلم") || 
+                     document.select("a[href*='play.php']").isNotEmpty() ||
+                     !document.select(".tab-episodes").isNullOrEmpty()
 
         if (isMovie) {
-            // MOVIE - use the URL directly for playback
-            return newMovieLoadResponse(title, url, TvType.Movie, url) {
+            // MOVIE - Extract the REAL play URL from the button
+            val playUrl = document.selectFirst("a[href*='skip.php']")?.attr("href") ?: url
+            
+            return newMovieLoadResponse(title, url, TvType.Movie, playUrl) {
                 this.posterUrl = poster
                 this.plot = description
+                this.year = year
+                this.quality = SearchQuality.parse(quality)
             }
         } else {
-            // SERIES - extract REAL episodes
+            // SERIES - Create episodes from similar content
             val episodes = extractRealEpisodes(document, url)
             
             return newTvSeriesLoadResponse(title, url, TvType.Anime, episodes) {
                 this.posterUrl = poster
                 this.plot = description
+                this.year = year
             }
         }
     }
@@ -89,28 +114,22 @@ class Animezid : MainAPI() {
     ): Boolean {
         val document = app.get(data).document
         
-        // REAL video extraction - look for play.php links
-        val playLinks = document.select("a[href*='play.php']")
+        // REAL video extraction - look for skip.php links (the actual play button)
+        val playLinks = document.select("a[href*='skip.php']")
         
         playLinks.forEach { playLink ->
+            val playUrl = playLink.attr("href")
+            if (playUrl.isNotBlank()) {
+                loadExtractor(playUrl, data, subtitleCallback, callback)
+            }
+        }
+
+        // Also check for direct play.php links
+        document.select("a[href*='play.php']").forEach { playLink ->
             val playUrl = playLink.attr("href").let {
                 if (it.startsWith("http")) it else "$mainUrl/$it"
             }
             loadExtractor(playUrl, data, subtitleCallback, callback)
-        }
-
-        // Also check for iframes
-        document.select("iframe").forEach { iframe ->
-            val src = iframe.attr("src").let {
-                when {
-                    it.startsWith("//") -> "https:$it"
-                    it.startsWith("/") -> "$mainUrl$it"
-                    else -> it
-                }
-            }
-            if (src.isNotBlank()) {
-                loadExtractor(src, data, subtitleCallback, callback)
-            }
         }
 
         return playLinks.isNotEmpty()
@@ -121,44 +140,22 @@ class Animezid : MainAPI() {
     private fun extractRealEpisodes(document: org.jsoup.nodes.Document, baseUrl: String): List<Episode> {
         val episodes = mutableListOf<Episode>()
         
-        // Method 1: Look for episode links in the page
-        document.select("a[href*='watch.php']").forEach { episodeLink ->
-            val episodeUrl = episodeLink.attr("href").let {
+        // Extract episodes from similar movies section (the carousel)
+        document.select(".movies_small a.movie").forEachIndexed { index, episodeElement ->
+            val episodeUrl = episodeElement.attr("href").let {
                 if (it.startsWith("http")) it else "$mainUrl/$it"
             }
-            val episodeText = episodeLink.text().trim()
-            
-            // Extract episode number from text
-            val episodeNum = extractEpisodeNumber(episodeText)
+            val episodeText = episodeElement.select(".title").text().trim()
             
             episodes.add(
                 newEpisode(episodeUrl) {
-                    this.name = episodeText.ifBlank { "الحلقة $episodeNum" }
-                    this.episode = episodeNum
+                    this.name = episodeText
+                    this.episode = index + 1
                 }
             )
         }
 
-        // Method 2: If no episodes found, check similar content section
-        if (episodes.isEmpty()) {
-            document.select(".movies_small a.movie[href*='watch.php']").forEach { similar ->
-                val episodeUrl = similar.attr("href").let {
-                    if (it.startsWith("http")) it else "$mainUrl/$it"
-                }
-                val episodeText = similar.select(".title").text().trim()
-                
-                val episodeNum = extractEpisodeNumber(episodeText)
-                
-                episodes.add(
-                    newEpisode(episodeUrl) {
-                        this.name = episodeText
-                        this.episode = episodeNum
-                    }
-                )
-            }
-        }
-
-        // Method 3: Fallback - create a single episode linking to the main page
+        // If no episodes found in carousel, create a default episode
         if (episodes.isEmpty()) {
             episodes.add(
                 newEpisode(baseUrl) {
@@ -168,13 +165,7 @@ class Animezid : MainAPI() {
             )
         }
 
-        return episodes.distinctBy { it.episode }.sortedBy { it.episode }
-    }
-
-    private fun extractEpisodeNumber(text: String): Int {
-        return Regex("""الحلقة\s*(\d+)""").find(text)?.groupValues?.get(1)?.toIntOrNull()
-            ?: Regex("""\b(\d+)\b""").find(text)?.groupValues?.get(1)?.toIntOrNull() 
-            ?: 1
+        return episodes
     }
 
     // ==================== REAL SEARCH RESPONSE ====================
@@ -187,8 +178,8 @@ class Animezid : MainAPI() {
         val fullPoster = if (poster.startsWith("http")) poster else "$mainUrl$poster"
         val fullHref = if (href.startsWith("http")) href else "$mainUrl$href"
 
-        // Determine type based on title and URL
-        val isMovie = title.contains("فيلم") || href.contains("/movie/") || href.contains("فيلم")
+        // Determine type based on title
+        val isMovie = title.contains("فيلم") || href.contains("/movie/")
 
         return if (isMovie) {
             newMovieSearchResponse(title, fullHref, TvType.Movie) {
