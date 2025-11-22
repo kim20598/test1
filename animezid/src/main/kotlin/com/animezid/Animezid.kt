@@ -101,7 +101,7 @@ class Animezid : MainAPI() {
         }
     }
 
-    // ==================== LOAD LINKS ====================
+    // ==================== LOAD LINKS - FIXED ====================
 
     override suspend fun loadLinks(
         data: String,
@@ -111,20 +111,9 @@ class Animezid : MainAPI() {
     ): Boolean {
         val document = app.get(data).document
         
-        // REAL video extraction from server buttons
-        val serverButtons = document.select("#xservers button")
         var foundLinks = false
-        
-        serverButtons.forEach { serverButton ->
-            val embedUrl = serverButton.attr("data-embed")
-            if (embedUrl.isNotBlank() && !embedUrl.startsWith("<")) {
-                // Load extractor for each embed URL
-                loadExtractor(embedUrl, data, subtitleCallback, callback)
-                foundLinks = true
-            }
-        }
 
-        // Also check for direct video iframes
+        // METHOD 1: Extract from active iframe in Playerholder
         document.select("#Playerholder iframe").forEach { iframe ->
             val src = iframe.attr("src")
             if (src.isNotBlank()) {
@@ -133,14 +122,45 @@ class Animezid : MainAPI() {
             }
         }
 
-        // Check for download links as backup
+        // METHOD 2: Extract from server buttons with data-embed
+        document.select("#xservers button").forEach { serverButton ->
+            val embedUrl = serverButton.attr("data-embed")
+            if (embedUrl.isNotBlank() && !embedUrl.startsWith("<")) {
+                // Fix URL if needed
+                val fixedUrl = if (embedUrl.startsWith("//")) "https:$embedUrl" 
+                              else if (!embedUrl.startsWith("http")) "https://$embedUrl"
+                              else embedUrl
+                loadExtractor(fixedUrl, data, subtitleCallback, callback)
+                foundLinks = true
+            }
+        }
+
+        // METHOD 3: Extract download links (direct file links)
+        document.select("a.dl.show_dl.api[target='_blank']").forEach { downloadLink ->
+            val downloadUrl = downloadLink.attr("href")
+            if (downloadUrl.isNotBlank() && downloadUrl.contains("http")) {
+                // These are direct download links - create direct extractor link
+                callback(
+                    ExtractorLink(
+                        name = "Animezid Download",
+                        source = name,
+                        url = downloadUrl,
+                        quality = Qualities.Unknown.value,
+                        isM3u8 = false
+                    )
+                )
+                foundLinks = true
+            }
+        }
+
+        // METHOD 4: Look for any video-related links
         if (!foundLinks) {
-            document.select("a.dl[target='_blank']").forEach { downloadLink ->
-                val downloadUrl = downloadLink.attr("href")
-                if (downloadUrl.isNotBlank()) {
-                    loadExtractor(downloadUrl, data, subtitleCallback, callback)
-                    foundLinks = true
+            document.select("a[href*='play.php'], a[href*='skip.php'], a[href*='embed.php']").forEach { videoLink ->
+                val videoUrl = videoLink.attr("href").let {
+                    if (it.startsWith("http")) it else "$mainUrl/$it"
                 }
+                loadExtractor(videoUrl, data, subtitleCallback, callback)
+                foundLinks = true
             }
         }
 
@@ -152,7 +172,7 @@ class Animezid : MainAPI() {
     private fun extractRealEpisodesFromSeasons(document: org.jsoup.nodes.Document, baseUrl: String): List<Episode> {
         val episodes = mutableListOf<Episode>()
         
-        // EXTRACT REAL EPISODES from ALL SeasonsEpisodes divs (not just active one)
+        // EXTRACT REAL EPISODES from ALL SeasonsEpisodes divs
         document.select(".SeasonsEpisodes a").forEach { episodeElement ->
             val episodeUrl = episodeElement.attr("href").let {
                 if (it.startsWith("http")) it else "$mainUrl/$it"
@@ -175,7 +195,6 @@ class Animezid : MainAPI() {
                 newEpisode(episodeUrl) {
                     this.name = episodeName
                     this.episode = episodeNumber ?: (episodes.size + 1)
-                    this.posterUrl = episodeElement.select("img").attr("src")
                 }
             )
         }
