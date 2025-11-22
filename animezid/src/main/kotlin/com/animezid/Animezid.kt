@@ -10,230 +10,82 @@ class Animezid : MainAPI() {
     override var mainUrl = "https://animezid.cam"
     override var name = "Animezid"
     override val hasMainPage = true
-    override val supportedTypes = setOf(TvType.Anime, TvType.Cartoon, TvType.TvSeries)
+    override val supportedTypes = setOf(TvType.Anime, TvType.Cartoon)
 
-    // ==================== UTILITY FUNCTIONS ====================
-    
     private fun String.cleanTitle(): String {
-        return this.replace(
-            "مشاهدة|تحميل|انمي|مترجم|اون لاين|بجودة عالية|الحلقة|مسلسل".toRegex(),
-            ""
-        ).trim()
-    }
-
-    private fun String.getIntFromText(): Int? {
-        return Regex("""\d+""").find(this)?.groupValues?.firstOrNull()?.toIntOrNull()
+        return this.replace("مشاهدة|تحميل|انمي|مترجم".toRegex(), "").trim()
     }
 
     private fun Element.toSearchResponse(): SearchResponse? {
-        return try {
-            val titleElement = selectFirst("h3, h2, .title, .anime-title") ?: return null
-            val title = titleElement.text().cleanTitle()
-            
-            val linkElement = selectFirst("a") ?: return null
-            val href = linkElement.attr("href").let {
-                if (it.startsWith("http")) it else "$mainUrl${it.removePrefix("/")}"
-            }
-            
-            val posterUrl = selectFirst("img")?.let { img ->
-                img.attr("data-src")
-                    .ifBlank { img.attr("data-lazy-src") }
-                    .ifBlank { img.attr("src") }
-            }?.let {
-                if (it.startsWith("http")) it else "$mainUrl${it.removePrefix("/")}"
-            }
+        val title = selectFirst("h3, h2, .title")?.text()?.cleanTitle() ?: return null
+        val href = selectFirst("a")?.attr("href") ?: return null
+        val posterUrl = selectFirst("img")?.attr("src")
 
-            val type = when {
-                href.contains("/anime/") -> TvType.Anime
-                href.contains("/cartoon/") -> TvType.Cartoon
-                else -> TvType.TvSeries
-            }
+        val fixedHref = when {
+            href.startsWith("http") -> href
+            href.startsWith("/") -> "$mainUrl$href"
+            else -> "$mainUrl/$href"
+        }
 
-            newAnimeSearchResponse(title, href, type) {
-                this.posterUrl = posterUrl
-            }
-        } catch (e: Exception) {
-            null
+        return newAnimeSearchResponse(title, fixedHref, TvType.Anime) {
+            this.posterUrl = posterUrl
         }
     }
-
-    // ==================== MAIN PAGE ====================
 
     override val mainPage = mainPageOf(
         "$mainUrl/anime/page/" to "أنمي",
         "$mainUrl/cartoon/page/" to "كرتون",
-        "$mainUrl/category/anime-movies/page/" to "أفلام أنمي",
-        "$mainUrl/category/japanese-anime/page/" to "أنمي ياباني",
-        "$mainUrl/category/chinese-anime/page/" to "أنمي صيني",
-        "$mainUrl/category/korean-anime/page/" to "أنمي كوري",
         "$mainUrl/ongoing/page/" to "مستمر",
         "$mainUrl/completed/page/" to "مكتمل"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val url = "${request.data}$page/"
-        
-        return try {
-            val document = app.get(url).document
-            
-            val items = document.select(
-                "article.anime-card, " +
-                "div.anime-item, " +
-                "div.post-item, " +
-                ".content-item, " +
-                ".anime-box, " +
-                "article"
-            ).mapNotNull { element ->
-                element.toSearchResponse()
-            }
-
-            newHomePageResponse(
-                list = HomePageList(request.name, items),
-                hasNext = items.isNotEmpty()
-            )
-        } catch (e: Exception) {
-            newHomePageResponse(request.name, emptyList())
+        val document = app.get("${request.data}$page/").document
+        val items = document.select("article, .anime-card, .post-item").mapNotNull {
+            it.toSearchResponse()
         }
+        return newHomePageResponse(request.name, items)
     }
-
-    // ==================== SEARCH ====================
 
     override suspend fun search(query: String): List<SearchResponse> {
-        if (query.length < 2) return emptyList()
-        
-        return try {
-            val searchUrl = "$mainUrl/?s=$query"
-            val document = app.get(searchUrl).document
-            
-            document.select(
-                "article.anime-card, " +
-                "div.anime-item, " +
-                "div.post-item, " +
-                ".search-result, " +
-                ".content-item, " +
-                "article"
-            ).mapNotNull { element ->
-                element.toSearchResponse()
-            }
-        } catch (e: Exception) {
-            emptyList()
+        val document = app.get("$mainUrl/?s=$query").document
+        return document.select("article, .anime-card, .post-item").mapNotNull {
+            it.toSearchResponse()
         }
     }
-
-    // ==================== LOAD (SERIES/MOVIE PAGE) ====================
 
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url).document
-        
-        val title = document.selectFirst(
-            "h1.entry-title, " +
-            "h1.anime-title, " +
-            "h1.post-title, " +
-            "h1"
-        )?.text()?.cleanTitle() ?: "Unknown"
-        
-        val posterUrl = document.selectFirst(
-            ".anime-poster img, " +
-            ".post-thumbnail img, " +
-            ".single-poster img, " +
-            "img.wp-post-image, " +
-            "img"
-        )?.let { img ->
-            img.attr("data-src")
-                .ifBlank { img.attr("src") }
-        }?.let {
-            if (it.startsWith("http")) it else "$mainUrl${it.removePrefix("/")}"
-        }
-        
-        val description = document.selectFirst(
-            ".anime-description, " +
-            ".entry-content p, " +
-            ".story, " +
-            ".synopsis"
-        )?.text()?.trim()
-        
-        val tags = document.select(
-            ".anime-genres a, " +
-            ".genres a, " +
-            "a[rel=tag]"
-        ).map { it.text() }
-        
-        val year = document.selectFirst(
-            ".year, " +
-            ".release-year, " +
-            "span:contains(السنة)"
-        )?.text()?.getIntFromText()
 
-        // Extract episodes
-        val episodes = mutableListOf<Episode>()
-        
-        // Pattern 1: Episode list
-        document.select(
-            ".episode-list a, " +
-            ".episodes-list a, " +
-            "ul.eps-list li a, " +
-            ".episode-item a"
-        ).forEach { epElement ->
-            val epHref = epElement.attr("href").let {
-                if (it.startsWith("http")) it else "$mainUrl${it.removePrefix("/")}"
-            }
-            val epTitle = epElement.text().trim()
-            val epNum = epTitle.getIntFromText()
-            
-            if (epHref.isNotBlank()) {
-                episodes.add(
-                    newEpisode(epHref) {
-                        name = epTitle.ifBlank { "الحلقة $epNum" }
-                        episode = epNum
-                    }
-                )
+        val title = document.selectFirst("h1")?.text()?.cleanTitle() ?: "Unknown"
+        val poster = document.selectFirst("img")?.attr("src")
+        val description = document.selectFirst(".entry-content p, .synopsis")?.text()
+        val tags = document.select(".genres a, a[rel=tag]").map { it.text() }
+
+        val episodes = document.select(".episode-list a, .episodes-list a").mapNotNull { ep ->
+            val epHref = ep.attr("href")
+            if (epHref.isBlank()) return@mapNotNull null
+
+            newEpisode(epHref) {
+                name = ep.text()
             }
         }
 
-        // Pattern 2: Season-based episodes
-        document.select(".season-list .season, .seasons-list li").forEach { seasonElement ->
-            val seasonNumber = seasonElement.text().getIntFromText() ?: 1
-            
-            seasonElement.select("a, .episode-link").forEach { epElement ->
-                val epHref = epElement.attr("href").let {
-                    if (it.startsWith("http")) it else "$mainUrl${it.removePrefix("/")}"
-                }
-                val epTitle = epElement.text().trim()
-                val epNum = epTitle.getIntFromText()
-                
-                if (epHref.isNotBlank()) {
-                    episodes.add(
-                        newEpisode(epHref) {
-                            name = epTitle
-                            episode = epNum
-                            season = seasonNumber
-                        }
-                    )
-                }
-            }
-        }
-
-        val isSeries = episodes.isNotEmpty()
-
-        return if (isSeries) {
+        return if (episodes.isNotEmpty()) {
             newAnimeLoadResponse(title, url, TvType.Anime) {
                 addEpisodes(DubStatus.Subbed, episodes.reversed())
-                this.posterUrl = posterUrl
+                this.posterUrl = poster
                 this.plot = description
                 this.tags = tags
-                this.year = year
             }
         } else {
             newMovieLoadResponse(title, url, TvType.AnimeMovie, url) {
-                this.posterUrl = posterUrl
+                this.posterUrl = poster
                 this.plot = description
                 this.tags = tags
-                this.year = year
             }
         }
     }
-
-    // ==================== LOAD LINKS ====================
 
     override suspend fun loadLinks(
         data: String,
@@ -241,63 +93,22 @@ class Animezid : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        try {
-            val document = app.get(data).document
-            
-            // Pattern 1: Direct iframes
-            document.select("iframe").forEach { iframe ->
-                val src = iframe.attr("src")
-                    .ifBlank { iframe.attr("data-src") }
-                    .let {
-                        when {
-                            it.startsWith("//") -> "https:$it"
-                            it.startsWith("/") -> "$mainUrl$it"
-                            else -> it
-                        }
-                    }
-                
-                if (src.isNotBlank() && src.startsWith("http")) {
-                    loadExtractor(src, data, subtitleCallback, callback)
-                }
+        val document = app.get(data).document
+
+        document.select("iframe").forEach { iframe ->
+            val src = iframe.attr("src")
+            if (src.isNotBlank()) {
+                loadExtractor(src, data, subtitleCallback, callback)
             }
-            
-            // Pattern 2: Server buttons/tabs
-            document.select(
-                ".server-list li, " +
-                ".watch-servers li, " +
-                "button[data-server], " +
-                "a[data-embed]"
-            ).forEach { serverElement ->
-                val embedUrl = serverElement.attr("data-server")
-                    .ifBlank { serverElement.attr("data-embed") }
-                    .ifBlank { serverElement.attr("data-src") }
-                    .ifBlank { serverElement.attr("href") }
-                    .let {
-                        when {
-                            it.startsWith("//") -> "https:$it"
-                            it.startsWith("/") -> "$mainUrl$it"
-                            else -> it
-                        }
-                    }
-                
-                if (embedUrl.isNotBlank() && embedUrl.startsWith("http")) {
-                    loadExtractor(embedUrl, data, subtitleCallback, callback)
-                }
+        }
+
+        document.select("button[data-server], .server-list li").forEach { server ->
+            val serverUrl = server.attr("data-server")
+            if (serverUrl.isNotBlank()) {
+                loadExtractor(serverUrl, data, subtitleCallback, callback)
             }
-            
-            // Pattern 3: Direct video links
-            document.select("a[href*='.mp4'], a[href*='.m3u8']").forEach { link ->
-                val videoUrl = link.attr("href")
-                if (videoUrl.isNotBlank()) {
-                    loadExtractor(videoUrl, data, subtitleCallback, callback)
-                }
-            }
-            
-            // Pattern 4: Watch button
-            val watchButton = document.selectFirst(
-                ".watch-button, " +
-                "button.watch-now, " +
-                "[data-watch-url]"
-            )
-            
-            if (watchButton != 
+        }
+
+        return true
+    }
+}
