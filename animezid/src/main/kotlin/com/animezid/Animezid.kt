@@ -13,7 +13,7 @@ class Animezid : MainAPI() {
     override var lang = "ar"
     override var mainUrl = "https://animezid.cam"
     override var name = "Animezid"
-    override val usesWebView = false
+    override val usesWebView = true
     override val hasMainPage = true
     override val supportedTypes = setOf(TvType.Anime, TvType.Movie)
 
