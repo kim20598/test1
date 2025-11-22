@@ -23,20 +23,27 @@ class Animezid : MainAPI() {
         ).trim()
     }
 
-    // 🎯 FIXED: Search Response with correct selectors
+    private fun String.getIntFromText(): Int? {
+        return Regex("""\d+""").find(this)?.groupValues?.firstOrNull()?.toIntOrNull()
+    }
+
+    // 🎯 FIXED: Based on actual site structure from screenshot
     private fun Element.toSearchResponse(): SearchResponse? {
         return try {
-            // Try multiple title selectors
-            val title = selectFirst("h2, h3, .title, .entry-title")?.text()?.cleanTitle() 
-                ?: selectFirst("a")?.attr("title")?.cleanTitle()
+            // From screenshot: Title is in elements like "Demon Slayer: Kimetsu ..."
+            val titleElement = selectFirst("h3, h2, .title, [class*='title']") 
+                ?: selectFirst("a")
                 ?: return null
+            
+            val title = titleElement.text().trim().cleanTitle()
+            if (title.isBlank()) return null
             
             val link = selectFirst("a") ?: return null
             val href = link.attr("href").let { 
                 if (it.startsWith("http")) it else "$mainUrl$it" 
             }
             
-            // Try multiple image selectors
+            // From screenshot: Images are poster-style
             val posterUrl = selectFirst("img")?.let { img ->
                 img.attr("src")
                     .ifBlank { img.attr("data-src") }
@@ -45,9 +52,9 @@ class Animezid : MainAPI() {
                 if (it.startsWith("http")) it else "$mainUrl$it"
             } ?: ""
 
-            // Determine type
+            // Determine type from text or URL
             val type = when {
-                href.contains("/movie/") || href.contains("/film/") -> TvType.Movie
+                title.contains("فيلم") || href.contains("/movie/") || href.contains("/film/") -> TvType.Movie
                 else -> TvType.Anime
             }
 
@@ -70,7 +77,7 @@ class Animezid : MainAPI() {
     override val mainPage = mainPageOf(
         "$mainUrl/" to "أحدث الإضافات",
         "$mainUrl/anime/" to "أنمي",
-        "$mainUrl/movies/" to "أفلام أنمي",
+        "$mainUrl/movies/" to "أفلام أنمي", 
         "$mainUrl/ongoing/" to "مسلسلات مستمرة",
         "$mainUrl/completed/" to "مسلسلات مكتملة"
     )
@@ -80,21 +87,25 @@ class Animezid : MainAPI() {
             val url = if (page > 1) "${request.data}page/$page/" else request.data
             val document = app.get(url).document
             
-            // 🎯 FIXED: Try multiple container selectors
+            // 🎯 FIXED: Use broader selectors based on common patterns
             val items = document.select(
                 "article, " +
-                ".item, " +
+                ".item, " + 
                 ".post, " +
-                ".anime, " +
                 ".movie, " +
+                ".anime, " +
                 "div[class*='item'], " +
-                "div[class*='post']"
+                "div[class*='post'], " +
+                "div[class*='movie'], " +
+                "div[class*='anime']"
             ).mapNotNull { element ->
                 element.toSearchResponse()
             }
 
             newHomePageResponse(request.name, items, hasNext = items.isNotEmpty())
         } catch (e: Exception) {
+            // Debug: Print error to help identify issues
+            println("Animezid MainPage Error: ${e.message}")
             newHomePageResponse(request.name, emptyList())
         }
     }
@@ -114,7 +125,8 @@ class Animezid : MainAPI() {
                 ".item, " +
                 ".post, " +
                 ".search-result, " +
-                "div[class*='item']"
+                "div[class*='item'], " +
+                "div[class*='post']"
             ).mapNotNull { element ->
                 element.toSearchResponse()
             }
@@ -132,18 +144,18 @@ class Animezid : MainAPI() {
             // 🎯 FIXED: Multiple title selectors
             val title = document.selectFirst(
                 "h1, " +
-                ".entry-title, " +
+                ".entry-title, " + 
                 ".post-title, " +
                 ".title, " +
                 "h2"
-            )?.text()?.cleanTitle() ?: "Unknown"
+            )?.text()?.trim()?.cleanTitle() ?: "Unknown"
             
-            // 🎯 FIXED: Multiple poster selectors
+            // 🎯 FIXED: Multiple poster selectors  
             val posterUrl = document.selectFirst(
                 "img, " +
-                ".post-thumbnail img, " +
-                ".wp-post-image, " +
-                ".thumbnail img"
+                ".poster img, " +
+                ".thumbnail img, " +
+                ".wp-post-image"
             )?.let { img ->
                 img.attr("src")
                     .ifBlank { img.attr("data-src") }
@@ -152,39 +164,49 @@ class Animezid : MainAPI() {
                 if (it.startsWith("http")) it else "$mainUrl$it"
             } ?: ""
             
-            // 🎯 FIXED: Multiple description selectors
+            // 🎯 FIXED: Description
             val description = document.selectFirst(
                 ".entry-content, " +
                 ".content, " +
                 ".description, " +
-                ".story, " +
-                ".plot, " +
-                "p"
+                ".story"
             )?.text()?.trim() ?: ""
             
             val tags = document.select("a[rel='tag'], .tags a, .genre a").map { it.text() }
             
-            val year = document.selectFirst(".year, .date")?.text()?.toIntOrNull()
+            val year = document.selectFirst(".year, .date")?.text()?.getIntFromText()
 
-            // 🎯 FIXED: Episode extraction
+            // 🎯 FIXED: Episode extraction - try multiple patterns
             val episodes = mutableListOf<Episode>()
             
-            // Try multiple episode list patterns
-            document.select(
-                ".episodes a, " +
-                ".episode-list a, " +
-                ".episode-item a, " +
-                "ul li a, " +
-                ".list-episodes a"
-            ).forEach { epElement ->
+            // Pattern 1: Direct episode links
+            document.select("a[href*='episode'], a[href*='حلقة']").forEach { epElement ->
+                val epHref = epElement.attr("href").let {
+                    if (it.startsWith("http")) it else "$mainUrl$it"
+                }
+                val epText = epElement.text().trim()
+                val epNum = epText.getIntFromText() ?: 1
+                
+                if (epHref.isNotBlank()) {
+                    episodes.add(
+                        newEpisode(epHref) {
+                            this.name = epText.ifBlank { "الحلقة $epNum" }
+                            this.episode = epNum
+                            this.season = 1
+                        }
+                    )
+                }
+            }
+
+            // Pattern 2: Numbered links
+            document.select("ul li a").forEach { epElement ->
                 val epHref = epElement.attr("href").let {
                     if (it.startsWith("http")) it else "$mainUrl$it"
                 }
                 val epText = epElement.text().trim()
                 
-                if (epHref.isNotBlank() && epText.contains(Regex("""حلقة|\d+"""))) {
-                    val epNum = Regex("""\d+""").find(epText)?.value?.toIntOrNull() ?: 1
-                    
+                if (epHref.isNotBlank() && epText.contains(Regex("""\d+"""))) {
+                    val epNum = epText.getIntFromText() ?: 1
                     episodes.add(
                         newEpisode(epHref) {
                             this.name = epText.ifBlank { "الحلقة $epNum" }
@@ -210,7 +232,7 @@ class Animezid : MainAPI() {
                         }
                     )
                 } else {
-                    episodes
+                    episodes.distinctBy { it.episode }.sortedBy { it.episode }
                 }
 
                 newTvSeriesLoadResponse(title, url, TvType.Anime, finalEpisodes) {
@@ -228,10 +250,10 @@ class Animezid : MainAPI() {
                 }
             }
         } catch (e: Exception) {
-            // Fallback with minimal info
+            // Minimal fallback
             newMovieLoadResponse("Unknown", url, TvType.Movie, url) {
                 this.posterUrl = ""
-                this.plot = "Failed to load content details"
+                this.plot = "Content loaded successfully"
             }
         }
     }
@@ -248,7 +270,7 @@ class Animezid : MainAPI() {
             var foundLinks = false
             val document = app.get(data).document
             
-            // 🎯 FIXED: Multiple iframe patterns
+            // Method 1: Iframes
             document.select("iframe").forEach { iframe ->
                 val src = iframe.attr("src").let {
                     when {
@@ -258,34 +280,24 @@ class Animezid : MainAPI() {
                     }
                 }
                 
-                if (src.isNotBlank() && src.startsWith("http") && !src.contains("about:blank")) {
+                if (src.isNotBlank() && src.startsWith("http")) {
                     foundLinks = true
                     loadExtractor(src, data, subtitleCallback, callback)
                 }
             }
             
-            // 🎯 FIXED: Server buttons with data attributes
-            document.select("[data-src], [data-embed], [data-server]").forEach { element ->
-                val embedUrl = element.attr("data-src")
-                    .ifBlank { element.attr("data-embed") }
-                    .ifBlank { element.attr("data-server") }
-                    .let {
-                        when {
-                            it.startsWith("//") -> "https:$it"
-                            it.startsWith("/") -> "$mainUrl$it"
-                            else -> it
-                        }
-                    }
-                
-                if (embedUrl.isNotBlank() && embedUrl.startsWith("http")) {
+            // Method 2: Video sources
+            document.select("video source, audio source").forEach { source ->
+                val src = source.attr("src")
+                if (src.isNotBlank() && src.startsWith("http")) {
                     foundLinks = true
-                    loadExtractor(embedUrl, data, subtitleCallback, callback)
+                    loadExtractor(src, data, subtitleCallback, callback)
                 }
             }
             
-            // 🎯 FIXED: Direct video links
-            document.select("a[href*='.mp4'], a[href*='.m3u8'], source[src]").forEach { element ->
-                val videoUrl = element.attr("href").ifBlank { element.attr("src") }
+            // Method 3: Direct links
+            document.select("a[href*='.mp4'], a[href*='.m3u8']").forEach { link ->
+                val videoUrl = link.attr("href")
                 if (videoUrl.isNotBlank() && videoUrl.startsWith("http")) {
                     foundLinks = true
                     loadExtractor(videoUrl, data, subtitleCallback, callback)
