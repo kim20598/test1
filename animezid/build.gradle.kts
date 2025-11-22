@@ -1,26 +1,16 @@
-// use an integer for version numbers
-version = 1
+plugins {
+    id("java-library")
+    id("kotlin")
+}
+
+dependencies {
+    implementation("com.lagradost:cloudstream3-core:latest.release")
+}
 
 cloudstream {
     language = "ar"
-    
     authors = listOf("kim20598")
-    
-    /**
-     * Status int as the following:
-     * 0: Down
-     * 1: Ok
-     * 2: Slow
-     * 3: Beta only
-     * */
     status = 1
-    tvTypes = listOf(
-        "Anime",
-        "Cartoon",
-        "TvSeries"
-    )
-
-    iconUrl = "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://animezid.cam&size=%size%"
-
-    isCrossPlatform = true
+    tvTypes = listOf("Anime","Cartoon", "Movie")
+    iconUrl = "https://www.google.com/s2/favicons?domain=animezid.cam&sz=%size%"
 }
