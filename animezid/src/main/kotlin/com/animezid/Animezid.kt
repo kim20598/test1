@@ -52,13 +52,18 @@ class Animezid : MainAPI() {
         val hasEpisodes = document.select(".SeasonsEpisodes a").isNotEmpty()
         
         return if (hasEpisodes) {
-            // TV Series
+            // TV Series - FIXED: Use newEpisode instead of Episode constructor
             val episodes = document.select(".SeasonsEpisodes a").mapNotNull { episodeElement ->
                 val episodeUrl = fixUrl(episodeElement.attr("href"))
                 val episodeNum = episodeElement.select("em").text().toIntOrNull() ?: return@mapNotNull null
                 val episodeTitle = episodeElement.select("span").text().takeIf { it.isNotBlank() } ?: "الحلقة $episodeNum"
                 
-                Episode(episodeUrl, episodeTitle, episodeNum)
+                // FIXED: Use newEpisode
+                newEpisode(episodeUrl) {
+                    this.name = episodeTitle
+                    this.episode = episodeNum
+                    this.season = 1 // Add season if needed
+                }
             }.distinctBy { it.episode }
 
             newTvSeriesLoadResponse(title, url, TvType.Anime, episodes) {
@@ -91,10 +96,22 @@ class Animezid : MainAPI() {
         document.select("#xservers button").forEach { serverButton ->
             val embedUrl = serverButton.attr("data-embed").trim()
             if (embedUrl.isNotBlank()) {
-                val fixedUrl = fixUrl(embedUrl)
-                // Directly pass to extractor
-                loadExtractor(fixedUrl, data, subtitleCallback, callback)
-                foundLinks = true
+                // Check if it's HTML or URL
+                if (embedUrl.startsWith("<")) {
+                    // It's HTML embed code - parse it
+                    val embedDoc = org.jsoup.Jsoup.parse(embedUrl)
+                    embedDoc.select("iframe").forEach { iframe ->
+                        val iframeSrc = iframe.attr("src")
+                        if (iframeSrc.isNotBlank()) {
+                            loadExtractor(fixUrl(iframeSrc), data, subtitleCallback, callback)
+                            foundLinks = true
+                        }
+                    }
+                } else {
+                    // It's a direct URL
+                    loadExtractor(fixUrl(embedUrl), data, subtitleCallback, callback)
+                    foundLinks = true
+                }
             }
         }
 
@@ -110,7 +127,7 @@ class Animezid : MainAPI() {
             }
         }
 
-        // METHOD 3: Download links as direct sources
+        // METHOD 3: Download links as direct sources - FIXED
         if (!foundLinks) {
             document.select("a.dl.show_dl.api").forEach { downloadLink ->
                 val downloadUrl = downloadLink.attr("href").trim()
@@ -118,18 +135,38 @@ class Animezid : MainAPI() {
                     val quality = downloadLink.select("span").firstOrNull()?.text() ?: "1080p"
                     val host = downloadLink.select("span").lastOrNull()?.text() ?: "Download"
                     
+                    // FIXED: Use ExtractorLink constructor properly
                     callback(
                         ExtractorLink(
                             source = name,
                             name = "$host - $quality",
                             url = downloadUrl,
                             referer = data,
-                            quality = getQualityFromName(quality),
-                            type = ExtractorLinkType.VIDEO
+                            quality = extractQuality(quality), // FIXED: Use custom quality extraction
+                            isM3u8 = downloadUrl.contains(".m3u8"),
+                            headers = mapOf("Referer" to data)
                         )
                     )
                     foundLinks = true
                 }
+            }
+        }
+
+        // METHOD 4: Check for video elements directly in page
+        document.select("video source, source[src]").forEach { source ->
+            val videoUrl = source.attr("src")
+            if (videoUrl.isNotBlank()) {
+                callback(
+                    ExtractorLink(
+                        source = name,
+                        name = name,
+                        url = fixUrl(videoUrl),
+                        referer = data,
+                        quality = Qualities.Unknown.value,
+                        isM3u8 = videoUrl.contains(".m3u8")
+                    )
+                )
+                foundLinks = true
             }
         }
 
@@ -165,6 +202,18 @@ class Animezid : MainAPI() {
             url.startsWith("//") -> "https:$url"
             url.startsWith("/") -> "$mainUrl$url"
             else -> "$mainUrl/$url"
+        }
+    }
+
+    // ADDED: Quality extraction helper
+    private fun extractQuality(quality: String): Int {
+        return when {
+            quality.contains("1080") -> Qualities.P1080.value
+            quality.contains("720") -> Qualities.P720.value
+            quality.contains("480") -> Qualities.P480.value
+            quality.contains("360") -> Qualities.P360.value
+            quality.contains("240") -> Qualities.P240.value
+            else -> Qualities.Unknown.value
         }
     }
 }
