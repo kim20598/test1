@@ -3,7 +3,6 @@ package com.animezid
 import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
-import org.jsoup.nodes.Element
 
 class Animezid : MainAPI() {
     override var mainUrl = "https://animezid.cam"
@@ -12,39 +11,6 @@ class Animezid : MainAPI() {
     override val hasMainPage = true
     override val supportedTypes = setOf(TvType.Anime, TvType.Movie)
     override var lang = "ar"
-
-    private fun Element.toSearchResponse(): SearchResponse? {
-        return try {
-            val title = this.attr("title")
-                .replace("مشاهدة|تحميل|انمي|مترجم".toRegex(), "")
-                .trim()
-            if (title.isBlank()) return null
-            
-            val href = this.attr("href")
-            val fullUrl = if (href.startsWith("http")) href else "$mainUrl$href"
-            
-            val poster = this.select("img").firstOrNull()?.attr("data-src") ?: ""
-            val fullPoster = if (poster.startsWith("http")) poster else "$mainUrl$poster"
-
-            val type = if (title.contains("فيلم") || fullUrl.contains("/movie/")) {
-                TvType.Movie
-            } else {
-                TvType.Anime
-            }
-
-            if (type == TvType.Anime) {
-                newTvSeriesSearchResponse(title, fullUrl, type) {
-                    this.posterUrl = fullPoster
-                }
-            } else {
-                newMovieSearchResponse(title, fullUrl, type) {
-                    this.posterUrl = fullPoster
-                }
-            }
-        } catch (e: Exception) {
-            null
-        }
-    }
 
     override val mainPage = mainPageOf(
         "$mainUrl/" to "أحدث الإضافات",
@@ -56,7 +22,40 @@ class Animezid : MainAPI() {
         return try {
             val url = if (page > 1) "${request.data}page/$page/" else request.data
             val document = app.get(url).document
-            val items = document.select("a.movie").mapNotNull { it.toSearchResponse() }
+            
+            val items = document.select("a.movie").mapNotNull { element ->
+                try {
+                    val title = element.attr("title")
+                        .replace("مشاهدة|تحميل|انمي|مترجم".toRegex(), "")
+                        .trim()
+                    if (title.isBlank()) return@mapNotNull null
+                    
+                    val href = element.attr("href")
+                    val fullUrl = if (href.startsWith("http")) href else "$mainUrl$href"
+                    
+                    val poster = element.select("img").attr("data-src")
+                    val fullPoster = if (poster.startsWith("http")) poster else "$mainUrl$poster"
+
+                    val type = if (title.contains("فيلم") || fullUrl.contains("/movie/")) {
+                        TvType.Movie
+                    } else {
+                        TvType.Anime
+                    }
+
+                    if (type == TvType.Anime) {
+                        newTvSeriesSearchResponse(title, fullUrl, type) {
+                            this.posterUrl = fullPoster
+                        }
+                    } else {
+                        newMovieSearchResponse(title, fullUrl, type) {
+                            this.posterUrl = fullPoster
+                        }
+                    }
+                } catch (e: Exception) {
+                    null
+                }
+            }
+            
             newHomePageResponse(request.name, items)
         } catch (e: Exception) {
             newHomePageResponse(request.name, emptyList())
@@ -66,7 +65,38 @@ class Animezid : MainAPI() {
     override suspend fun search(query: String): List<SearchResponse> {
         return try {
             val document = app.get("$mainUrl/search.php?keywords=$query").document
-            document.select("a.movie").mapNotNull { it.toSearchResponse() }
+            document.select("a.movie").mapNotNull { element ->
+                try {
+                    val title = element.attr("title")
+                        .replace("مشاهدة|تحميل|انمي|مترجم".toRegex(), "")
+                        .trim()
+                    if (title.isBlank()) return@mapNotNull null
+                    
+                    val href = element.attr("href")
+                    val fullUrl = if (href.startsWith("http")) href else "$mainUrl$href"
+                    
+                    val poster = element.select("img").attr("data-src")
+                    val fullPoster = if (poster.startsWith("http")) poster else "$mainUrl$poster"
+
+                    val type = if (title.contains("فيلم") || fullUrl.contains("/movie/")) {
+                        TvType.Movie
+                    } else {
+                        TvType.Anime
+                    }
+
+                    if (type == TvType.Anime) {
+                        newTvSeriesSearchResponse(title, fullUrl, type) {
+                            this.posterUrl = fullPoster
+                        }
+                    } else {
+                        newMovieSearchResponse(title, fullUrl, type) {
+                            this.posterUrl = fullPoster
+                        }
+                    }
+                } catch (e: Exception) {
+                    null
+                }
+            }
         } catch (e: Exception) {
             emptyList()
         }
@@ -102,7 +132,7 @@ class Animezid : MainAPI() {
         } catch (e: Exception) {
             newMovieLoadResponse("Unknown", url, TvType.Movie, url) {
                 this.posterUrl = ""
-                this.plot = "Failed to load"
+                this.plot = "Failed to load content"
             }
         }
     }
