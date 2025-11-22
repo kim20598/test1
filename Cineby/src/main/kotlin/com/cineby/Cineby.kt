@@ -220,8 +220,7 @@ class Cineby : MainAPI() {
                 this.plot = media.overview
                 this.tags = media.genres?.map { it.name }
                 this.year = (media.first_air_date ?: media.release_date)?.take(4)?.toIntOrNull()
-                // FIXED: Use score instead of rating
-                media.vote_average?.let { this.score = (it * 100).toInt() }
+                // REMOVED: Rating/score assignment - not needed
             }
         } else {
             newMovieLoadResponse(title, url, TvType.Movie, url) {
@@ -231,8 +230,7 @@ class Cineby : MainAPI() {
                 this.tags = media.genres?.map { it.name }
                 this.year = media.release_date?.take(4)?.toIntOrNull()
                 this.duration = media.runtime
-                // FIXED: Use score instead of rating
-                media.vote_average?.let { this.score = (it * 100).toInt() }
+                // REMOVED: Rating/score assignment - not needed
             }
         }
     }
@@ -298,7 +296,6 @@ class Cineby : MainAPI() {
                         val apiResponse = app.get(apiUrl).parsedSafe<SourceResponse>()
                         apiResponse?.sources?.forEach { source ->
                             foundLinks = true
-                            // FIXED: Use newExtractorLink instead of constructor
                             callback(
                                 newExtractorLink(
                                     source = name,
@@ -339,7 +336,6 @@ class Cineby : MainAPI() {
                         val sourceResponse = app.get(serverUrl).parsedSafe<SourceResponse>()
                         sourceResponse?.sources?.forEach { source ->
                             foundLinks = true
-                            // FIXED: Use newExtractorLink instead of constructor
                             callback(
                                 newExtractorLink(
                                     source = name,
