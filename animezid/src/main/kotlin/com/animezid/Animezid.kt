@@ -77,15 +77,14 @@ class Animezid : MainAPI() {
         // Extract year from the table
         val year = document.selectFirst("a[href*='filter=years']")?.text()?.toIntOrNull()
 
-        // Check if it's a movie or series - USE REAL EPISODE DATA
-        val hasRealEpisodes = document.select(".SeasonsEpisodes a").isNotEmpty()
-        val isMovie = url.contains("فيلم") || !hasRealEpisodes
+        // CORRECT SERIES DETECTION - Check for seasons and episodes tabs
+        val hasSeasons = document.select(".tab-seasons li").isNotEmpty()
+        val hasEpisodes = document.select(".SeasonsEpisodes a").isNotEmpty()
+        val isMovie = !hasSeasons && !hasEpisodes
 
         if (isMovie) {
-            // MOVIE - Extract the REAL play URL from the button
-            val playUrl = document.selectFirst("a[href*='skip.php']")?.attr("href") ?: url
-            
-            return newMovieLoadResponse(title, url, TvType.Movie, playUrl) {
+            // MOVIE - Use the current URL as play URL
+            return newMovieLoadResponse(title, url, TvType.Movie, url) {
                 this.posterUrl = poster
                 this.plot = description
                 this.year = year
@@ -93,15 +92,6 @@ class Animezid : MainAPI() {
         } else {
             // SERIES - USE REAL EPISODES from SeasonsEpisodes
             val episodes = extractRealEpisodesFromSeasons(document, url)
-            
-            // If no real episodes found, return as movie
-            if (episodes.isEmpty()) {
-                return newMovieLoadResponse(title, url, TvType.Movie, url) {
-                    this.posterUrl = poster
-                    this.plot = description
-                    this.year = year
-                }
-            }
             
             return newTvSeriesLoadResponse(title, url, TvType.Anime, episodes) {
                 this.posterUrl = poster
@@ -121,25 +111,40 @@ class Animezid : MainAPI() {
     ): Boolean {
         val document = app.get(data).document
         
-        // REAL video extraction - look for skip.php links (the actual play button)
-        val playLinks = document.select("a[href*='skip.php']")
+        // REAL video extraction from server buttons
+        val serverButtons = document.select("#xservers button")
+        var foundLinks = false
         
-        playLinks.forEach { playLink ->
-            val playUrl = playLink.attr("href")
-            if (playUrl.isNotBlank()) {
-                loadExtractor(playUrl, data, subtitleCallback, callback)
+        serverButtons.forEach { serverButton ->
+            val embedUrl = serverButton.attr("data-embed")
+            if (embedUrl.isNotBlank() && !embedUrl.startsWith("<")) {
+                // Load extractor for each embed URL
+                loadExtractor(embedUrl, data, subtitleCallback, callback)
+                foundLinks = true
             }
         }
 
-        // Also check for direct play.php links
-        document.select("a[href*='play.php']").forEach { playLink ->
-            val playUrl = playLink.attr("href").let {
-                if (it.startsWith("http")) it else "$mainUrl/$it"
+        // Also check for direct video iframes
+        document.select("#Playerholder iframe").forEach { iframe ->
+            val src = iframe.attr("src")
+            if (src.isNotBlank()) {
+                loadExtractor(src, data, subtitleCallback, callback)
+                foundLinks = true
             }
-            loadExtractor(playUrl, data, subtitleCallback, callback)
         }
 
-        return playLinks.isNotEmpty()
+        // Check for download links as backup
+        if (!foundLinks) {
+            document.select("a.dl[target='_blank']").forEach { downloadLink ->
+                val downloadUrl = downloadLink.attr("href")
+                if (downloadUrl.isNotBlank()) {
+                    loadExtractor(downloadUrl, data, subtitleCallback, callback)
+                    foundLinks = true
+                }
+            }
+        }
+
+        return foundLinks
     }
 
     // ==================== REAL EPISODE EXTRACTION FROM SEASONS ====================
@@ -147,7 +152,7 @@ class Animezid : MainAPI() {
     private fun extractRealEpisodesFromSeasons(document: org.jsoup.nodes.Document, baseUrl: String): List<Episode> {
         val episodes = mutableListOf<Episode>()
         
-        // EXTRACT REAL EPISODES from SeasonsEpisodes divs
+        // EXTRACT REAL EPISODES from ALL SeasonsEpisodes divs (not just active one)
         document.select(".SeasonsEpisodes a").forEach { episodeElement ->
             val episodeUrl = episodeElement.attr("href").let {
                 if (it.startsWith("http")) it else "$mainUrl/$it"
@@ -160,29 +165,39 @@ class Animezid : MainAPI() {
             // Extract episode title from <span> tag
             val episodeTitle = episodeElement.select("span").text().trim()
             
+            val episodeName = if (episodeTitle.isNotBlank() && episodeTitle != "الحلقة") {
+                episodeTitle
+            } else {
+                "الحلقة $episodeNumberText"
+            }
+            
             episodes.add(
                 newEpisode(episodeUrl) {
-                    this.name = if (episodeTitle.isNotBlank()) episodeTitle else "الحلقة $episodeNumberText"
+                    this.name = episodeName
                     this.episode = episodeNumber ?: (episodes.size + 1)
+                    this.posterUrl = episodeElement.select("img").attr("src")
                 }
             )
         }
 
-        return episodes
+        return episodes.distinctBy { it.episode } // Remove duplicates
     }
 
     // ==================== REAL SEARCH RESPONSE ====================
 
     private fun Element.toRealSearchResponse(): SearchResponse? {
-        val title = this.attr("title").takeIf { it.isNotBlank() } ?: return null
+        val title = this.attr("title").takeIf { it.isNotBlank() } 
+            ?: this.select(".title").text().takeIf { it.isNotBlank() }
+            ?: return null
+            
         val href = this.attr("href").takeIf { it.isNotBlank() } ?: return null
         val poster = this.select("img.lazy").attr("data-src")
         
         val fullPoster = if (poster.startsWith("http")) poster else "$mainUrl$poster"
         val fullHref = if (href.startsWith("http")) href else "$mainUrl$href"
 
-        // Determine type based on title and URL
-        val isMovie = title.contains("فيلم") || href.contains("/movie/")
+        // Determine type based on content - movies usually have "فيلم" in title
+        val isMovie = title.contains("فيلم") || href.contains("/movie/") || title.contains("فيلم")
 
         return if (isMovie) {
             newMovieSearchResponse(title, fullHref, TvType.Movie) {
