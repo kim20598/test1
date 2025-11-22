@@ -61,7 +61,10 @@ class Animezid : MainAPI() {
         // REAL title extraction from <h1><span itemprop="name">
         val title = document.selectFirst("h1 span[itemprop=name]")?.text() 
             ?: document.selectFirst("h1")?.text() 
-            ?: "Unknown"
+            ?: return newMovieLoadResponse("", url, TvType.Movie, url) {
+                this.posterUrl = ""
+                this.plot = ""
+            }
         
         // REAL poster extraction from img.lazy[data-src]
         val poster = document.selectFirst("img.lazy")?.attr("data-src")?.let { 
@@ -74,10 +77,9 @@ class Animezid : MainAPI() {
         // Extract year from the table
         val year = document.selectFirst("a[href*='filter=years']")?.text()?.toIntOrNull()
 
-        // Check if it's a movie or series
-        val isMovie = url.contains("فيلم") || 
-                     document.select("a[href*='play.php']").isNotEmpty() ||
-                     !document.select(".tab-episodes").isNullOrEmpty()
+        // Check if it's a movie or series - ONLY USE REAL DATA
+        val hasEpisodes = document.select(".movies_small a.movie").isNotEmpty()
+        val isMovie = url.contains("فيلم") || !hasEpisodes
 
         if (isMovie) {
             // MOVIE - Extract the REAL play URL from the button
@@ -89,8 +91,17 @@ class Animezid : MainAPI() {
                 this.year = year
             }
         } else {
-            // SERIES - Create episodes from similar content
+            // SERIES - ONLY use episodes from similar content
             val episodes = extractRealEpisodes(document, url)
+            
+            // If no real episodes found, return nothing
+            if (episodes.isEmpty()) {
+                return newMovieLoadResponse(title, url, TvType.Movie, url) {
+                    this.posterUrl = poster
+                    this.plot = description
+                    this.year = year
+                }
+            }
             
             return newTvSeriesLoadResponse(title, url, TvType.Anime, episodes) {
                 this.posterUrl = poster
@@ -136,7 +147,7 @@ class Animezid : MainAPI() {
     private fun extractRealEpisodes(document: org.jsoup.nodes.Document, baseUrl: String): List<Episode> {
         val episodes = mutableListOf<Episode>()
         
-        // Extract episodes from similar movies section (the carousel)
+        // ONLY extract episodes from similar movies section (the carousel)
         document.select(".movies_small a.movie").forEachIndexed { index, episodeElement ->
             val episodeUrl = episodeElement.attr("href").let {
                 if (it.startsWith("http")) it else "$mainUrl/$it"
@@ -147,16 +158,6 @@ class Animezid : MainAPI() {
                 newEpisode(episodeUrl) {
                     this.name = episodeText
                     this.episode = index + 1
-                }
-            )
-        }
-
-        // If no episodes found in carousel, create a default episode
-        if (episodes.isEmpty()) {
-            episodes.add(
-                newEpisode(baseUrl) {
-                    this.name = "مشاهدة الحلقات"
-                    this.episode = 1
                 }
             )
         }
