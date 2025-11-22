@@ -52,17 +52,16 @@ class Animezid : MainAPI() {
         val hasEpisodes = document.select(".SeasonsEpisodes a").isNotEmpty()
         
         return if (hasEpisodes) {
-            // TV Series - FIXED: Use newEpisode instead of Episode constructor
+            // TV Series
             val episodes = document.select(".SeasonsEpisodes a").mapNotNull { episodeElement ->
                 val episodeUrl = fixUrl(episodeElement.attr("href"))
                 val episodeNum = episodeElement.select("em").text().toIntOrNull() ?: return@mapNotNull null
                 val episodeTitle = episodeElement.select("span").text().takeIf { it.isNotBlank() } ?: "الحلقة $episodeNum"
                 
-                // FIXED: Use newEpisode
                 newEpisode(episodeUrl) {
                     this.name = episodeTitle
                     this.episode = episodeNum
-                    this.season = 1 // Add season if needed
+                    this.season = 1
                 }
             }.distinctBy { it.episode }
 
@@ -81,7 +80,7 @@ class Animezid : MainAPI() {
         }
     }
 
-    // ==================== LOAD LINKS - SIMPLIFIED & DIRECT ====================
+    // ==================== LOAD LINKS - FIXED ====================
 
     override suspend fun loadLinks(
         data: String,
@@ -127,7 +126,7 @@ class Animezid : MainAPI() {
             }
         }
 
-        // METHOD 3: Download links as direct sources - FIXED
+        // METHOD 3: Download links as direct sources - FIXED with newExtractorLink
         if (!foundLinks) {
             document.select("a.dl.show_dl.api").forEach { downloadLink ->
                 val downloadUrl = downloadLink.attr("href").trim()
@@ -135,36 +134,38 @@ class Animezid : MainAPI() {
                     val quality = downloadLink.select("span").firstOrNull()?.text() ?: "1080p"
                     val host = downloadLink.select("span").lastOrNull()?.text() ?: "Download"
                     
-                    // FIXED: Use ExtractorLink constructor properly
+                    // FIXED: Using newExtractorLink instead of constructor
                     callback(
-                        ExtractorLink(
+                        newExtractorLink(
                             source = name,
                             name = "$host - $quality",
                             url = downloadUrl,
-                            referer = data,
-                            quality = extractQuality(quality), // FIXED: Use custom quality extraction
-                            isM3u8 = downloadUrl.contains(".m3u8"),
-                            headers = mapOf("Referer" to data)
-                        )
+                            type = if (downloadUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                        ) {
+                            this.referer = data
+                            this.quality = extractQuality(quality)
+                        }
                     )
                     foundLinks = true
                 }
             }
         }
 
-        // METHOD 4: Check for video elements directly in page
+        // METHOD 4: Check for video elements directly in page - FIXED
         document.select("video source, source[src]").forEach { source ->
             val videoUrl = source.attr("src")
             if (videoUrl.isNotBlank()) {
+                // FIXED: Using newExtractorLink
                 callback(
-                    ExtractorLink(
+                    newExtractorLink(
                         source = name,
                         name = name,
                         url = fixUrl(videoUrl),
-                        referer = data,
-                        quality = Qualities.Unknown.value,
-                        isM3u8 = videoUrl.contains(".m3u8")
-                    )
+                        type = if (videoUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                    ) {
+                        this.referer = data
+                        this.quality = Qualities.Unknown.value
+                    }
                 )
                 foundLinks = true
             }
@@ -205,7 +206,7 @@ class Animezid : MainAPI() {
         }
     }
 
-    // ADDED: Quality extraction helper
+    // Quality extraction helper
     private fun extractQuality(quality: String): Int {
         return when {
             quality.contains("1080") -> Qualities.P1080.value
