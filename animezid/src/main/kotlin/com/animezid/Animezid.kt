@@ -6,7 +6,6 @@ import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.getQualityFromName
 import com.lagradost.cloudstream3.utils.newExtractorLink
-import com.lagradost.cloudstream3.utils.AppUtils
 import org.jsoup.nodes.Element
 import java.net.URLEncoder
 
@@ -83,7 +82,7 @@ class Animezid : MainAPI() {
         }
     }
 
-    // ==================== LOAD LINKS - MEGAMAX SPECIFIC ====================
+    // ==================== LOAD LINKS - OPTIMIZED FOR ALL SERVERS ====================
 
     override suspend fun loadLinks(
         data: String,
@@ -96,187 +95,68 @@ class Animezid : MainAPI() {
             val document = app.get(episodeUrl).document
             var foundLinks = false
 
-            // METHOD 1: Extract ALL server buttons and their embed URLs
-            val serverMap = mutableMapOf<String, String>()
+            // METHOD 1: Extract ALL server buttons from #xservers
+            val serverButtons = document.select("#xservers button")
             
-            // Get all server buttons and their data
-            document.select("#xservers button, .server-btn, .server-button").forEach { serverButton ->
-                val serverName = serverButton.text().trim().takeIf { it.isNotBlank() } ?: "Unknown Server"
-                val embedUrl = serverButton.attr("data-embed").takeIf { it.isNotBlank() }
-                    ?: serverButton.attr("data-src").takeIf { it.isNotBlank() }
-                    ?: return@forEach
-
-                // Skip if it's HTML or invalid
-                if (embedUrl.startsWith("<") || embedUrl.contains("javascript")) return@forEach
-
-                serverMap[serverName] = fixUrl(embedUrl)
-            }
-
-            // METHOD 2: Try each server in order
-            for ((serverName, embedUrl) in serverMap) {
+            // Try each server button in order
+            for (serverButton in serverButtons) {
+                val serverName = serverButton.text().trim()
+                val embedUrl = serverButton.attr("data-embed").trim()
+                
+                if (embedUrl.isBlank()) continue
+                
+                val fixedEmbedUrl = fixUrl(embedUrl)
+                
+                // Try to load extractor for this server
                 try {
-                    println("🔄 Trying server: $serverName with URL: $embedUrl")
-                    
-                    when {
-                        // MEGAMAX HANDLING
-                        embedUrl.contains("megamax", ignoreCase = true) -> {
-                            foundLinks = handleMegamaxEmbed(embedUrl, episodeUrl, callback) || foundLinks
-                        }
-                        // VIDTUBE HANDLING  
-                        embedUrl.contains("vidtube", ignoreCase = true) -> {
-                            loadExtractor(embedUrl, episodeUrl, subtitleCallback, callback)
-                            foundLinks = true
-                        }
-                        // ZID HANDLING
-                        embedUrl.contains("zid", ignoreCase = true) -> {
-                            loadExtractor(embedUrl, episodeUrl, subtitleCallback, callback)
-                            foundLinks = true
-                        }
-                        // DEFAULT: Use loadExtractor for other hosts
-                        else -> {
-                            loadExtractor(embedUrl, episodeUrl, subtitleCallback, callback)
-                            foundLinks = true
-                        }
-                    }
+                    loadExtractor(fixedEmbedUrl, episodeUrl, subtitleCallback, callback)
+                    foundLinks = true
+                    // Don't break - let users choose from multiple servers
                 } catch (e: Exception) {
-                    println("❌ Failed to extract from $serverName: ${e.message}")
+                    // Continue to next server if this one fails
                     continue
                 }
             }
 
-            // METHOD 3: Direct iframe extraction as fallback
+            // METHOD 2: Try the active iframe in #Playerholder
             if (!foundLinks) {
-                document.select("iframe").forEach { iframe ->
-                    val iframeSrc = iframe.attr("src").takeIf { it.isNotBlank() } ?: return@forEach
-                    val fixedIframeUrl = fixUrl(iframeSrc)
-                    
-                    println("🔄 Trying iframe: $fixedIframeUrl")
-                    
-                    when {
-                        fixedIframeUrl.contains("megamax", ignoreCase = true) -> {
-                            foundLinks = handleMegamaxEmbed(fixedIframeUrl, episodeUrl, callback) || foundLinks
-                        }
-                        else -> {
-                            loadExtractor(fixedIframeUrl, episodeUrl, subtitleCallback, callback)
-                            foundLinks = true
-                        }
+                document.select("#Playerholder iframe").forEach { iframe ->
+                    val iframeSrc = iframe.attr("src").trim()
+                    if (iframeSrc.isNotBlank()) {
+                        val fixedIframeUrl = fixUrl(iframeSrc)
+                        loadExtractor(fixedIframeUrl, episodeUrl, subtitleCallback, callback)
+                        foundLinks = true
                     }
                 }
             }
 
-            // METHOD 4: Look for direct video links
+            // METHOD 3: Extract download links as direct video sources
             if (!foundLinks) {
-                document.select("video source").forEach { source ->
-                    val videoUrl = source.attr("src").takeIf { it.isNotBlank() } ?: return@forEach
+                document.select("a.dl.show_dl.api[target='_blank']").forEach { downloadLink ->
+                    val downloadUrl = downloadLink.attr("href").trim()
+                    val qualityText = downloadLink.select("span").first()?.text() ?: "1080p"
+                    val hostName = downloadLink.select("span").last()?.text() ?: "Download"
                     
-                    callback(
-                        newExtractorLink(
-                            source = name,
-                            name = "Animezid Direct Video",
-                            url = fixUrl(videoUrl)
-                        ) {
-                            this.referer = episodeUrl
-                            this.quality = getQualityFromName(source.attr("data-quality") ?: "720p")
-                            this.type = ExtractorLinkType.VIDEO
-                        }
-                    )
-                    foundLinks = true
+                    if (downloadUrl.isNotBlank() && downloadUrl.startsWith("http")) {
+                        callback(
+                            newExtractorLink(
+                                source = name,
+                                name = "$hostName - $qualityText",
+                                url = downloadUrl
+                            ) {
+                                this.referer = episodeUrl
+                                this.quality = getQualityFromName(qualityText)
+                                this.type = ExtractorLinkType.VIDEO
+                            }
+                        )
+                        foundLinks = true
+                    }
                 }
             }
 
             foundLinks
         }.getOrElse { 
             false 
-        }
-    }
-
-    // ==================== MEGAMAX SPECIFIC HANDLER ====================
-
-    private suspend fun handleMegamaxEmbed(embedUrl: String, referer: String, callback: (ExtractorLink) -> Unit): Boolean {
-        return try {
-            println("🔍 Processing Megamax embed: $embedUrl")
-            
-            // Extract the embed code from the URL
-            val embedCode = when {
-                embedUrl.contains("/iframe/") -> {
-                    embedUrl.substringAfter("/iframe/").substringBefore("?")
-                }
-                embedUrl.contains("src=") -> {
-                    embedUrl.substringAfter("src=").substringBefore("&")
-                }
-                else -> {
-                    embedUrl.substringAfterLast("/")
-                }
-            }.takeIf { it.isNotBlank() } ?: return false
-
-            println("📦 Megamax embed code: $embedCode")
-
-            // Construct the direct megamax URL
-            val directUrl = "https://megamax.me/embed-$embedCode.html"
-            
-            // Try to extract from the direct URL
-            val response = app.get(directUrl, referer = embedUrl)
-            val doc = response.document
-
-            // Look for video sources in Megamax player
-            val videoSource = doc.selectFirst("video source")?.attr("src")
-            val m3u8Url = doc.selectFirst("source[src*=.m3u8]")?.attr("src")
-            val mp4Url = doc.selectFirst("source[src*=.mp4]")?.attr("src")
-
-            when {
-                videoSource != null -> {
-                    callback(
-                        newExtractorLink(
-                            source = name,
-                            name = "Megamax Direct",
-                            url = fixUrl(videoSource)
-                        ) {
-                            this.referer = directUrl
-                            this.quality = getQualityFromName("1080p")
-                            this.type = ExtractorLinkType.VIDEO
-                        }
-                    )
-                    true
-                }
-                m3u8Url != null -> {
-                    callback(
-                        newExtractorLink(
-                            source = name,
-                            name = "Megamax HLS",
-                            url = fixUrl(m3u8Url)
-                        ) {
-                            this.referer = directUrl
-                            this.quality = getQualityFromName("1080p")
-                            this.type = ExtractorLinkType.HLS
-                        }
-                    )
-                    true
-                }
-                mp4Url != null -> {
-                    callback(
-                        newExtractorLink(
-                            source = name,
-                            name = "Megamax MP4",
-                            url = fixUrl(mp4Url)
-                        ) {
-                            this.referer = directUrl
-                            this.quality = getQualityFromName("1080p")
-                            this.type = ExtractorLinkType.VIDEO
-                        }
-                    )
-                    true
-                }
-                else -> {
-                    // Fallback to regular extractor
-                    loadExtractor(directUrl, referer) { link ->
-                        callback(link)
-                    }
-                    true
-                }
-            }
-        } catch (e: Exception) {
-            println("❌ Megamax extraction failed: ${e.message}")
-            false
         }
     }
 
@@ -329,6 +209,6 @@ class Animezid : MainAPI() {
             url.startsWith("//") -> "https:$url"
             url.startsWith("/") -> "$mainUrl$url"
             else -> "$mainUrl/$url"
-        }
+        }.trim()
     }
 }
