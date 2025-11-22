@@ -182,11 +182,10 @@ class Animezid : MainAPI() {
             
             if (epHref.isNotBlank()) {
                 episodes.add(
-                    Episode(
-                        data = epHref,
-                        name = epTitle.ifBlank { "الحلقة $epNum" },
+                    newEpisode(epHref) {
+                        name = epTitle.ifBlank { "الحلقة $epNum" }
                         episode = epNum
-                    )
+                    }
                 )
             }
         }
@@ -204,12 +203,11 @@ class Animezid : MainAPI() {
                 
                 if (epHref.isNotBlank()) {
                     episodes.add(
-                        Episode(
-                            data = epHref,
-                            name = epTitle,
-                            episode = epNum,
+                        newEpisode(epHref) {
+                            name = epTitle
+                            episode = epNum
                             season = seasonNumber
-                        )
+                        }
                     )
                 }
             }
@@ -269,4 +267,37 @@ class Animezid : MainAPI() {
                 ".watch-servers li, " +
                 "button[data-server], " +
                 "a[data-embed]"
-            ).forEach { 
+            ).forEach { serverElement ->
+                val embedUrl = serverElement.attr("data-server")
+                    .ifBlank { serverElement.attr("data-embed") }
+                    .ifBlank { serverElement.attr("data-src") }
+                    .ifBlank { serverElement.attr("href") }
+                    .let {
+                        when {
+                            it.startsWith("//") -> "https:$it"
+                            it.startsWith("/") -> "$mainUrl$it"
+                            else -> it
+                        }
+                    }
+                
+                if (embedUrl.isNotBlank() && embedUrl.startsWith("http")) {
+                    loadExtractor(embedUrl, data, subtitleCallback, callback)
+                }
+            }
+            
+            // Pattern 3: Direct video links
+            document.select("a[href*='.mp4'], a[href*='.m3u8']").forEach { link ->
+                val videoUrl = link.attr("href")
+                if (videoUrl.isNotBlank()) {
+                    loadExtractor(videoUrl, data, subtitleCallback, callback)
+                }
+            }
+            
+            // Pattern 4: Watch button
+            val watchButton = document.selectFirst(
+                ".watch-button, " +
+                "button.watch-now, " +
+                "[data-watch-url]"
+            )
+            
+            if (watchButton != 
