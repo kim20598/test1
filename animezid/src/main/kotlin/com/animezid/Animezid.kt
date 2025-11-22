@@ -135,9 +135,8 @@ class Animezid : MainAPI() {
             val year = document.selectFirst("a[href*='filter=years']")?.text()?.getIntFromText()
 
             // 🎯 PERFECT: Extract metadata from table
-            val quality = document.select("th:contains(الجودة) + td a").text()
             val ratingText = document.select("th:contains(التقييم) + td strong").text()
-            val score = ratingText.toFloatOrNull()?.div(10) // Convert 7.1 to 0.71 for score
+            val score = ratingText.toFloatOrNull()?.let { Score(it / 10) } // Convert 7.1 to Score(0.71)
 
             // 🎯 PERFECT: Episode extraction for series
             val episodes = mutableListOf<Episode>()
