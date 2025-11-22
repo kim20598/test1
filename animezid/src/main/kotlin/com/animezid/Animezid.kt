@@ -6,7 +6,6 @@ import com.lagradost.cloudstream3.utils.ExtractorLinkType
 import com.lagradost.cloudstream3.utils.loadExtractor
 import com.lagradost.cloudstream3.utils.getQualityFromName
 import com.lagradost.cloudstream3.utils.newExtractorLink
-import com.lagradost.cloudstream3.utils.AppUtils
 import org.jsoup.nodes.Element
 import java.net.URLEncoder
 
@@ -83,7 +82,7 @@ class Animezid : MainAPI() {
         }
     }
 
-    // ==================== LOAD LINKS - COMPLETELY REWRITTEN ====================
+    // ==================== LOAD LINKS - FIXED PARAMETERS ====================
 
     override suspend fun loadLinks(
         data: String,
@@ -96,7 +95,7 @@ class Animezid : MainAPI() {
             val document = app.get(episodeUrl).document
             var foundLinks = false
 
-            // METHOD 1: Extract from server buttons with proper handling
+            // METHOD 1: Extract from server buttons
             val serverButtons = document.select("#xservers button, .server-btn, .server-button")
             
             for (serverButton in serverButtons) {
@@ -109,59 +108,13 @@ class Animezid : MainAPI() {
 
                 val fixedEmbedUrl = fixUrl(embedUrl)
                 
-                // Add proper headers to bypass ads
-                val headers = mapOf(
-                    "Referer" to episodeUrl,
-                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                    "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
-                )
-
                 try {
-                    // Try to get the final URL after redirects
-                    val response = app.get(fixedEmbedUrl, headers = headers, allowRedirects = true)
-                    val finalUrl = response.url
-                    
-                    // If we got a different URL, use it for extraction
-                    if (finalUrl != fixedEmbedUrl && finalUrl.contains("http")) {
-                        loadExtractor(finalUrl, episodeUrl, subtitleCallback, callback)
-                        foundLinks = true
-                    } else {
-                        // Otherwise try to extract from the response document
-                        val embedDoc = response.document
-                        
-                        // Look for video sources in the embed
-                        val videoSource = embedDoc.selectFirst("video source")?.attr("src")
-                        val iframeSrc = embedDoc.selectFirst("iframe")?.attr("src")
-                        
-                        when {
-                            videoSource != null -> {
-                                callback(
-                                    newExtractorLink(
-                                        source = name,
-                                        name = "Animezid Direct",
-                                        url = fixUrl(videoSource),
-                                        referer = finalUrl,
-                                        quality = getQualityFromName("1080p"),
-                                        type = ExtractorLinkType.VIDEO
-                                    )
-                                )
-                                foundLinks = true
-                            }
-                            iframeSrc != null -> {
-                                loadExtractor(fixUrl(iframeSrc), episodeUrl, subtitleCallback, callback)
-                                foundLinks = true
-                            }
-                            else -> {
-                                // Fallback to regular extractor
-                                loadExtractor(finalUrl, episodeUrl, subtitleCallback, callback)
-                                foundLinks = true
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                    // If direct extraction fails, try the original URL
+                    // Try to load extractor for this embed URL
                     loadExtractor(fixedEmbedUrl, episodeUrl, subtitleCallback, callback)
                     foundLinks = true
+                } catch (e: Exception) {
+                    // If extraction fails, continue to next method
+                    continue
                 }
             }
 
@@ -185,11 +138,12 @@ class Animezid : MainAPI() {
                         newExtractorLink(
                             source = name,
                             name = "Animezid Direct Video",
-                            url = fixUrl(videoUrl),
-                            referer = episodeUrl,
-                            quality = getQualityFromName(source.attr("data-quality") ?: "720p"),
-                            type = ExtractorLinkType.VIDEO
-                        )
+                            url = fixUrl(videoUrl)
+                        ) {
+                            this.referer = episodeUrl
+                            this.quality = getQualityFromName(source.attr("data-quality") ?: "720p")
+                            this.type = ExtractorLinkType.VIDEO
+                        }
                     )
                     foundLinks = true
                 }
@@ -204,11 +158,12 @@ class Animezid : MainAPI() {
                         newExtractorLink(
                             source = name,
                             name = "Animezid Download - ${downloadLink.text().trim()}",
-                            url = fixUrl(downloadUrl),
-                            referer = episodeUrl,
-                            quality = getQualityFromName(downloadLink.text()) ?: getQualityFromName("1080p"),
-                            type = ExtractorLinkType.VIDEO
-                        )
+                            url = fixUrl(downloadUrl)
+                        ) {
+                            this.referer = episodeUrl
+                            this.quality = getQualityFromName(downloadLink.text()) ?: getQualityFromName("1080p")
+                            this.type = ExtractorLinkType.VIDEO
+                        }
                     )
                     foundLinks = true
                 }
