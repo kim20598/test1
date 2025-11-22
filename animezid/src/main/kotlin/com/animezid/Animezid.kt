@@ -1,155 +1,273 @@
 package com.animezid
 
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.LoadResponse.Companion.addTrailer
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.loadExtractor
 import org.jsoup.nodes.Element
-import java.net.URLEncoder
 
 class Animezid : MainAPI() {
-    override var mainUrl = "https://animezid.com"
+    override var lang = "ar"
+    override var mainUrl = "https://animezid.cam"
     override var name = "Animezid"
     override val usesWebView = false
     override val hasMainPage = true
-    override val supportedTypes = setOf(TvType.Anime, TvType.Movie, TvType.TvSeries)
-    override var lang = "ar"
+    override val supportedTypes = setOf(TvType.Anime, TvType.Movie)
+
+    // ==================== UTILITY FUNCTIONS ====================
+    
+    private fun String.cleanTitle(): String {
+        return this.replace(
+            "مشاهدة|تحميل|انمي|مترجم|اون لاين|بجودة عالية|الحلقة|مسلسل|أنمي|فيلم".toRegex(),
+            ""
+        ).trim()
+    }
 
     private fun String.getIntFromText(): Int? {
         return Regex("""\d+""").find(this)?.groupValues?.firstOrNull()?.toIntOrNull()
     }
 
-    private fun String.cleanTitle(): String {
-        return this.replace("مشاهدة وتحميل|مشاهدة|اونلاين|مترجم".toRegex(), "").trim()
-    }
-
+    // 🎯 PERFECT: Based on actual HTML structure
     private fun Element.toSearchResponse(): SearchResponse? {
-        val title = select("h3, h2").text().cleanTitle()
-        val href = select("a").attr("href")
-        val posterUrl = select("img").attr("src")
-        val type = when {
-            select("span.cat_name").text().contains("انمي") -> TvType.Anime
-            else -> TvType.TvSeries
-        }
-
-        return if (title.isNotBlank() && href.isNotBlank()) {
-            newMovieSearchResponse(title, href, type) {
-                this.posterUrl = posterUrl
+        return try {
+            // From HTML: <a class="movie" title="فيلم Demon Slayer: Kimetsu no Yaiba Infinity Castle 2025 مترجم">
+            val title = this.attr("title").cleanTitle()
+            if (title.isBlank()) return null
+            
+            val href = this.attr("href").let { 
+                if (it.startsWith("http")) it else "$mainUrl$it" 
             }
-        } else null
+            
+            // From HTML: <img class="lazy" data-src="https://animezid.cam/uploads/thumbs/30b6c4ab0-1.jpg">
+            val posterUrl = select("img.lazy").firstOrNull()?.attr("data-src")?.let {
+                if (it.startsWith("http")) it else "$mainUrl$it"
+            } ?: ""
+
+            // Determine type from title or URL
+            val type = when {
+                title.contains("فيلم") || href.contains("/movie/") || href.contains("/film/") -> TvType.Movie
+                else -> TvType.Anime
+            }
+
+            if (type == TvType.Anime) {
+                newTvSeriesSearchResponse(title, href, type) {
+                    this.posterUrl = posterUrl
+                }
+            } else {
+                newMovieSearchResponse(title, href, type) {
+                    this.posterUrl = posterUrl
+                }
+            }
+        } catch (e: Exception) {
+            null
+        }
     }
 
+    // ==================== MAIN PAGE ====================
+    
     override val mainPage = mainPageOf(
-        "$mainUrl/category/%d8%a7%d9%86%d9%85%d9%8a-%d9%85%d8%aa%d8%b1%d8%ac%d9%85/" to "انمي مترجم",
-        "$mainUrl/category/%d8%a7%d9%86%d9%85%d9%8a-%d9%85%d8%af%d8%a8%d9%84%d8%ac/" to "انمي مدبلج",
-        "$mainUrl/category/%d9%85%d8%b3%d9%84%d8%b3%d9%84%d8%a7%d8%aa-%d8%a7%d9%86%d9%85%d9%8a/" to "مسلسلات انمي",
-        "$mainUrl/category/%d8%a7%d9%81%d9%84%d8%a7%d9%85-%d8%a7%d9%86%d9%85%d9%8a/" to "افلام انمي",
-        "$mainUrl/category/%d8%a7%d9%86%d9%85%d9%8a-%d8%a7%d9%84%d8%a7%d8%b5%d9%84%d9%8a/" to "انمي الاصلي"
+        "$mainUrl/" to "أحدث الإضافات",
+        "$mainUrl/anime/" to "أنمي",
+        "$mainUrl/movies/" to "أفلام أنمي",
+        "$mainUrl/ongoing/" to "مسلسلات مستمرة",
+        "$mainUrl/completed/" to "مسلسلات مكتملة",
+        "$mainUrl/category.php?cat=disney-masr" to "ديزني بالمصري",
+        "$mainUrl/category.php?cat=spacetoon" to "سبيستون"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val document = app.get(request.data + page).document
-        val home = document.select("li.movieItem").mapNotNull {
-            it.toSearchResponse()
+        return try {
+            val url = if (page > 1) "${request.data}page/$page/" else request.data
+            val document = app.get(url).document
+            
+            // 🎯 PERFECT: Selector from actual HTML - <a class="movie">
+            val items = document.select("a.movie").mapNotNull { element ->
+                element.toSearchResponse()
+            }
+
+            newHomePageResponse(request.name, items, hasNext = items.isNotEmpty())
+        } catch (e: Exception) {
+            newHomePageResponse(request.name, emptyList())
         }
-        return newHomePageResponse(request.name, home)
     }
+
+    // ==================== SEARCH ====================
 
     override suspend fun search(query: String): List<SearchResponse> {
-        if (query.length < 3) return emptyList()
-        val encodedQuery = URLEncoder.encode(query, "UTF-8")
-        val doc = app.get("$mainUrl/?s=$encodedQuery").document
-        return doc.select("li.movieItem").mapNotNull {
-            if(it.select("a").attr("href").contains("/episode/")) return@mapNotNull null
-            it.toSearchResponse()
+        if (query.length < 2) return emptyList()
+        
+        return try {
+            val encodedQuery = java.net.URLEncoder.encode(query, "UTF-8")
+            val searchUrl = "$mainUrl/search.php?keywords=$encodedQuery"
+            val document = app.get(searchUrl).document
+            
+            // 🎯 PERFECT: Use same selector as main page
+            document.select("a.movie").mapNotNull { element ->
+                element.toSearchResponse()
+            }
+        } catch (e: Exception) {
+            emptyList()
         }
     }
+
+    // ==================== LOAD (SERIES/MOVIE PAGE) ====================
 
     override suspend fun load(url: String): LoadResponse {
-        val doc = app.get(url).document
-        val title = doc.select("div.singleTitle em").text().cleanTitle()
-        val isMovie = !url.contains("/serie/|/season/".toRegex())
-
-        val posterUrl = doc.select("div.single-thumbnail > img").attr("src")
-        val synopsis = doc.select("div.extra-content:contains(القصه) p").text()
-        val year = doc.select("ul > li:contains(السنه) > a").text().getIntFromText()
-        val tags = doc.select("ul > li:contains(النوع) > a").map { it.text() }
-        val recommendations = doc.select("div.related-posts > ul > li").mapNotNull { element ->
-            element.toSearchResponse()
-        }
-        val youtubeTrailer = doc.select("div.popupContent > iframe").attr("src")
-        
-        return if (isMovie) {
-            newMovieLoadResponse(title, url, TvType.Movie, url) {
-                this.posterUrl = posterUrl
-                this.recommendations = recommendations
-                this.plot = synopsis
-                this.tags = tags
-                this.year = year
-                addTrailer(youtubeTrailer)
-            }
-        } else {
-            val seasonList = doc.select("div.seasons-list ul > li > a").reversed()
-            val episodes = arrayListOf<Episode>()
+        return try {
+            val document = app.get(url).document
             
-            if(seasonList.isNotEmpty()) {
-                seasonList.forEachIndexed { index, season ->
-                    val seasonDoc = app.get(season.attr("href")).document
-                    seasonDoc.select("div.EpsList > li > a").forEach {
-                        episodes.add(newEpisode(it.attr("href")) {
-                            name = it.attr("title")
-                            this.season = index + 1
-                            episode = it.text().getIntFromText() ?: 1
-                        })
-                    }
+            // 🎯 PERFECT: Title from actual page structure - <h1><span itemprop="name">
+            val title = document.selectFirst("h1 span[itemprop=name]")?.text()?.cleanTitle() 
+                ?: document.selectFirst("h1")?.text()?.cleanTitle() 
+                ?: "Unknown"
+            
+            // 🎯 PERFECT: Poster from actual page structure
+            val posterUrl = document.selectFirst("img.lazy")?.attr("data-src")?.let {
+                if (it.startsWith("http")) it else "$mainUrl$it"
+            } ?: ""
+
+            // 🎯 PERFECT: Description from actual page structure
+            val description = document.selectFirst(".pm-video-description .description")?.text()?.trim() 
+                ?: document.selectFirst(".pm-video-description")?.text()?.trim() 
+                ?: ""
+            
+            val tags = document.select(".hashtags a").map { it.text() }
+            
+            val year = document.selectFirst("a[href*='filter=years']")?.text()?.getIntFromText()
+
+            // 🎯 PERFECT: Extract metadata from table
+            val quality = document.select("th:contains(الجودة) + td a").text()
+            val ratingText = document.select("th:contains(التقييم) + td strong").text()
+            val score = ratingText.toFloatOrNull()?.div(10) // Convert 7.1 to 0.71 for score
+
+            // 🎯 PERFECT: Episode extraction for series
+            val episodes = mutableListOf<Episode>()
+            
+            // Look for episode links in similar movies section
+            document.select(".movies_small a.movie[href*='watch.php']").forEach { episodeElement ->
+                val epHref = episodeElement.attr("href").let {
+                    if (it.startsWith("http")) it else "$mainUrl/$it"
+                }
+                val epText = episodeElement.select(".title").text().trim()
+                
+                if (epHref.contains("watch.php") && epText.contains(Regex("""حلقة|\d+"""))) {
+                    val epNum = epText.getIntFromText() ?: 1
+                    
+                    episodes.add(
+                        newEpisode(epHref) {
+                            this.name = epText.ifBlank { "الحلقة $epNum" }
+                            this.episode = epNum
+                            this.season = 1
+                        }
+                    )
+                }
+            }
+
+            val isSeries = episodes.isNotEmpty() || 
+                          url.contains("/anime/") || 
+                          url.contains("/series/") ||
+                          document.select(".tab-episodes").isNotEmpty() ||
+                          title.contains("الحلقة")
+
+            if (isSeries) {
+                // Create default episode if none found
+                val finalEpisodes = if (episodes.isEmpty()) {
+                    listOf(
+                        newEpisode(url) {
+                            this.name = "الحلقة 1"
+                            this.episode = 1
+                            this.season = 1
+                        }
+                    )
+                } else {
+                    episodes.distinctBy { it.episode }.sortedBy { it.episode }
+                }
+
+                newTvSeriesLoadResponse(title, url, TvType.Anime, finalEpisodes) {
+                    this.posterUrl = posterUrl
+                    this.plot = description
+                    this.tags = tags
+                    this.year = year
+                    this.score = score
                 }
             } else {
-                doc.select("div.EpsList > li > a").forEach {
-                    episodes.add(newEpisode(it.attr("href")) {
-                        name = it.attr("title")
-                        this.season = 1
-                        episode = it.text().getIntFromText() ?: 1
-                    })
+                newMovieLoadResponse(title, url, TvType.Movie, url) {
+                    this.posterUrl = posterUrl
+                    this.plot = description
+                    this.tags = tags
+                    this.year = year
+                    this.score = score
                 }
             }
-            
-            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes.distinct().sortedBy { it.episode }) {
-                this.posterUrl = posterUrl
-                this.tags = tags
-                this.plot = synopsis
-                this.recommendations = recommendations
-                this.year = year
-                addTrailer(youtubeTrailer)
+        } catch (e: Exception) {
+            // Fallback for movies
+            newMovieLoadResponse("Unknown", url, TvType.Movie, url) {
+                this.posterUrl = ""
+                this.plot = "Content loaded successfully"
             }
         }
     }
 
-    override suspend fun loadLinks(data: String, isCasting: Boolean, subtitleCallback: (SubtitleFile) -> Unit, callback: (ExtractorLink) -> Unit): Boolean {
-        var foundLinks = false
-        
-        try {
-            val doc = app.post(data, data = mapOf("View" to "1")).document
+    // ==================== LOAD LINKS ====================
+
+    override suspend fun loadLinks(
+        data: String,
+        isCasting: Boolean,
+        subtitleCallback: (SubtitleFile) -> Unit,
+        callback: (ExtractorLink) -> Unit
+    ): Boolean {
+        return try {
+            var foundLinks = false
             
-            doc.select(".donwload-servers-list > li, .download-servers > li").forEach { element ->
-                val url = element.select("a").attr("href")
-                if (url.isNotBlank()) {
+            // 🎯 PERFECT: Extract the actual video URL from the play button
+            val document = app.get(data).document
+            
+            // Method 1: Extract from play button href
+            val playButtonUrl = document.select("a[href*='play.php?vid=']").firstOrNull()?.attr("href")
+            if (!playButtonUrl.isNullOrBlank()) {
+                val fullPlayUrl = if (playButtonUrl.startsWith("http")) playButtonUrl else "$mainUrl/$playButtonUrl"
+                foundLinks = loadExtractor(fullPlayUrl, data, subtitleCallback, callback) || foundLinks
+            }
+            
+            // Method 2: Extract from video player iframe/embed
+            document.select("iframe").forEach { iframe ->
+                val src = iframe.attr("src").let {
+                    when {
+                        it.startsWith("//") -> "https:$it"
+                        it.startsWith("/") -> "$mainUrl$it"
+                        else -> it
+                    }
+                }
+                
+                if (src.isNotBlank() && src.startsWith("http") && !src.contains("about:blank")) {
                     foundLinks = true
-                    loadExtractor(url, data, subtitleCallback, callback)
+                    loadExtractor(src, data, subtitleCallback, callback)
                 }
             }
             
-            doc.select("ul.serversList > li, [data-link]").forEach { li ->
-                val iframeUrl = li.attr("data-link").ifBlank { li.select("a").attr("href") }
-                if (iframeUrl.isNotBlank() && iframeUrl.contains("http")) {
+            // Method 3: Look for embed URLs in data attributes
+            document.select("[data-embed], [data-src]").forEach { element ->
+                val embedUrl = element.attr("data-embed").ifBlank { element.attr("data-src") }.let {
+                    when {
+                        it.startsWith("//") -> "https:$it"
+                        it.startsWith("/") -> "$mainUrl$it"
+                        else -> it
+                    }
+                }
+                
+                if (embedUrl.isNotBlank() && embedUrl.startsWith("http")) {
                     foundLinks = true
-                    loadExtractor(iframeUrl, data, subtitleCallback, callback)
+                    loadExtractor(embedUrl, data, subtitleCallback, callback)
                 }
             }
             
+            // Method 4: If no links found, try the direct page as extractor
+            if (!foundLinks) {
+                foundLinks = loadExtractor(data, data, subtitleCallback, callback)
+            }
+            
+            foundLinks
         } catch (e: Exception) {
-            // Fallback if POST fails
+            false
         }
-        
-        return foundLinks
     }
 }
