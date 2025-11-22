@@ -135,21 +135,12 @@ class Animezid : MainAPI() {
             }
         }
 
-        // METHOD 3: Extract download links (direct file links)
+        // METHOD 3: Extract download links (direct file links) - SIMPLIFIED
         document.select("a.dl.show_dl.api[target='_blank']").forEach { downloadLink ->
             val downloadUrl = downloadLink.attr("href")
             if (downloadUrl.isNotBlank() && downloadUrl.contains("http")) {
-                // These are direct download links - create direct extractor link
-                callback(
-                    ExtractorLink(
-                        source = name,
-                        name = "Animezid Download",
-                        url = downloadUrl,
-                        referer = mainUrl,
-                        quality = null,
-                        isM3u8 = false
-                    )
-                )
+                // Use loadExtractor for download links instead of creating ExtractorLink directly
+                loadExtractor(downloadUrl, data, subtitleCallback, callback)
                 foundLinks = true
             }
         }
