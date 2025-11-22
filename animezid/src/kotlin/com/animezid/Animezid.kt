@@ -10,7 +10,7 @@ import java.net.URLEncoder
 class Animezid : MainAPI() {
     override var lang = "ar"
     override var mainUrl = "https://animezid.cam"
-    override var name = "Animezid"
+    override var name = "Animezid1"
     override val usesWebView = false
     override val hasMainPage = true
     override val supportedTypes = setOf(
@@ -360,4 +360,5 @@ class Animezid : MainAPI() {
         
         return foundLinks
     }
+
 }
