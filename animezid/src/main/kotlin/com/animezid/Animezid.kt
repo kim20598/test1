@@ -74,9 +74,6 @@ class Animezid : MainAPI() {
         // Extract year from the table
         val year = document.selectFirst("a[href*='filter=years']")?.text()?.toIntOrNull()
 
-        // Extract quality from the table
-        val quality = document.select("th:contains(الدقة) + td a").text()
-
         // Check if it's a movie or series
         val isMovie = url.contains("فيلم") || 
                      document.select("a[href*='play.php']").isNotEmpty() ||
@@ -90,7 +87,6 @@ class Animezid : MainAPI() {
                 this.posterUrl = poster
                 this.plot = description
                 this.year = year
-                this.quality = SearchQuality.parse(quality)
             }
         } else {
             // SERIES - Create episodes from similar content
