@@ -1,29 +1,26 @@
-plugins {
-    id("com.android.library")
-    id("org.jetbrains.kotlin.android")
-}
-
-android {
-    namespace = "com.animezid"
-    compileSdk = 34
-
-    defaultConfig {
-        minSdk = 21
-    }
-
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
-    }
-}
+// use an integer for version numbers
+version = 1
 
 cloudstream {
-    authors = listOf("YourName")
     language = "ar"
-    tvTypes = listOf("Anime", "Movie")
-    iconUrl = "https://www.google.com/s2/favicons?domain=animezid.cam&sz=%size%"
-}
+    
+    authors = listOf("kim20598")
+    
+    /**
+     * Status int as the following:
+     * 0: Down
+     * 1: Ok
+     * 2: Slow
+     * 3: Beta only
+     * */
+    status = 1
+    tvTypes = listOf(
+        "Anime",
+        "Cartoon",
+        "TvSeries"
+    )
 
-dependencies {
-    implementation("com.lagradost:cloudstream3-core:latest.release")
+    iconUrl = "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://animezid.cam&size=%size%"
+
+    isCrossPlatform = true
 }
