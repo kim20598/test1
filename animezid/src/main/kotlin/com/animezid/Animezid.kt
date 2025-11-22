@@ -134,10 +134,6 @@ class Animezid : MainAPI() {
             
             val year = document.selectFirst("a[href*='filter=years']")?.text()?.getIntFromText()
 
-            // 🎯 PERFECT: Extract metadata from table
-            val ratingText = document.select("th:contains(التقييم) + td strong").text()
-            val score = ratingText.toFloatOrNull()?.let { Score(it / 10) } // Convert 7.1 to Score(0.71)
-
             // 🎯 PERFECT: Episode extraction for series
             val episodes = mutableListOf<Episode>()
             
@@ -186,7 +182,6 @@ class Animezid : MainAPI() {
                     this.plot = description
                     this.tags = tags
                     this.year = year
-                    this.score = score
                 }
             } else {
                 newMovieLoadResponse(title, url, TvType.Movie, url) {
@@ -194,7 +189,6 @@ class Animezid : MainAPI() {
                     this.plot = description
                     this.tags = tags
                     this.year = year
-                    this.score = score
                 }
             }
         } catch (e: Exception) {
