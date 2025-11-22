@@ -220,7 +220,8 @@ class Cineby : MainAPI() {
                 this.plot = media.overview
                 this.tags = media.genres?.map { it.name }
                 this.year = (media.first_air_date ?: media.release_date)?.take(4)?.toIntOrNull()
-                media.vote_average?.let { this.rating = (it * 1000).toInt() }
+                // FIXED: Use score instead of rating
+                media.vote_average?.let { this.score = (it * 100).toInt() }
             }
         } else {
             newMovieLoadResponse(title, url, TvType.Movie, url) {
@@ -230,7 +231,8 @@ class Cineby : MainAPI() {
                 this.tags = media.genres?.map { it.name }
                 this.year = media.release_date?.take(4)?.toIntOrNull()
                 this.duration = media.runtime
-                media.vote_average?.let { this.rating = (it * 1000).toInt() }
+                // FIXED: Use score instead of rating
+                media.vote_average?.let { this.score = (it * 100).toInt() }
             }
         }
     }
@@ -296,15 +298,17 @@ class Cineby : MainAPI() {
                         val apiResponse = app.get(apiUrl).parsedSafe<SourceResponse>()
                         apiResponse?.sources?.forEach { source ->
                             foundLinks = true
+                            // FIXED: Use newExtractorLink instead of constructor
                             callback(
-                                ExtractorLink(
+                                newExtractorLink(
                                     source = name,
                                     name = source.quality ?: name,
                                     url = source.url,
-                                    referer = embedUrl,
-                                    quality = getQualityFromString(source.quality ?: ""),
-                                    isM3u8 = source.url.contains(".m3u8")
-                                )
+                                    type = if (source.url.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                                ) {
+                                    this.referer = embedUrl
+                                    this.quality = getQualityFromString(source.quality ?: "")
+                                }
                             )
                         }
                         
@@ -335,15 +339,17 @@ class Cineby : MainAPI() {
                         val sourceResponse = app.get(serverUrl).parsedSafe<SourceResponse>()
                         sourceResponse?.sources?.forEach { source ->
                             foundLinks = true
+                            // FIXED: Use newExtractorLink instead of constructor
                             callback(
-                                ExtractorLink(
+                                newExtractorLink(
                                     source = name,
                                     name = "${server.name} - ${source.quality}",
                                     url = source.url,
-                                    referer = mainUrl,
-                                    quality = getQualityFromString(source.quality ?: ""),
-                                    isM3u8 = source.url.contains(".m3u8")
-                                )
+                                    type = if (source.url.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                                ) {
+                                    this.referer = mainUrl
+                                    this.quality = getQualityFromString(source.quality ?: "")
+                                }
                             )
                         }
                     } catch (e: Exception) {
