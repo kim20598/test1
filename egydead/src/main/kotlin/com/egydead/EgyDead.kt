@@ -107,11 +107,11 @@ class EgyDead : MainAPI() {
         "$mainUrl/series-category/english-series/?page=" to "Foreign Series | مسلسلات أجنبي",
         "$mainUrl/series-category/cartoon-series/?page=" to "Cartoon Series | مسلسلات كرتون",
         "$mainUrl/series-category/asian-series/?page=" to "Asian Series | مسلسلات آسيوية",
-        "$mainUrl/series-category/series-category/turkish-series/?page=" to "Turkish Series | مسلسلات تركية",
-        "$mainUrl/series-category/series-category/latino-series/?page=" to "Latin Series | مسلسلات لاتينية",
+        "$mainUrl/series-category/turkish-series/?page=" to "Turkish Series | مسلسلات تركية",
+        "$mainUrl/series-category/latino-series/?page=" to "Latin Series | مسلسلات لاتينية",
         "$mainUrl/series-category/documentary-series/?page=" to "Documentary Series | مسلسلات وثائقية",
         "$mainUrl/series-category/arabic-series/?page=" to "Arabic Series | مسلسلات عربي",
-        "$mainUrl/series-category/african-series" to "African Series | مسلسلات أفريقية",
+        "$mainUrl/series-category/african-series/?page=" to "African Series | مسلسلات أفريقية",
 
         // Anime Categories (انمي)
         "$mainUrl/series-category/anime-series/?page=" to "Anime Series | مسلسلات أنمي",
