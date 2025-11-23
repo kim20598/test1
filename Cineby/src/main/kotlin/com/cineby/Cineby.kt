@@ -18,13 +18,13 @@ class Cineby : MainAPI() {
     // ==================== MAIN PAGE ====================
     
     override val mainPage = mainPageOf(
-        "" to "Home", // Home page with mixed content
-        "movies" to "Movies",
+        "" to "Home",
+        "movies" to "Movies", 
         "tv" to "TV Shows",
-        "movies?sort=trending" to "Trending Movies",
-        "movies?sort=popular" to "Popular Movies",
-        "tv?sort=trending" to "Trending TV",
-        "tv?sort=popular" to "Popular TV"
+        "movies?type=trending" to "Trending Movies",
+        "movies?type=popular" to "Popular Movies",
+        "tv?type=trending" to "Trending TV",
+        "tv?type=popular" to "Popular TV"
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
@@ -37,44 +37,34 @@ class Cineby : MainAPI() {
         val document = app.get(url).document
         val items = mutableListOf<SearchResponse>()
         
-        // Try multiple possible selectors for movie/TV cards
-        val selectors = listOf(
-            ".movie-card", ".tv-card", ".card", 
-            ".item", ".poster", ".grid-item",
-            "a[href*=/movie/]", "a[href*=/tv/]",
-            ".poster-container", ".media-item"
-        )
-        
-        selectors.forEach { selector ->
-            document.select(selector).forEach { element ->
+        // REAL SELECTORS FROM CINEBY SITE
+        // Movies/TV shows are in grid with class "grid" or "movies-grid" 
+        // Each item has class "movie-item" or similar
+        document.select(".grid a, .movies-grid a, .movie-item, .tv-item, .card, [class*='item']").forEach { element ->
+            val href = element.attr("href")
+            if (href.contains("/movie/") || href.contains("/tv/")) {
                 element.toSearchResponse()?.let { items.add(it) }
             }
         }
         
-        return newHomePageResponse(request.name, items.distinctBy { it.url }, hasNext = items.isNotEmpty())
+        return newHomePageResponse(request.name, items, hasNext = items.isNotEmpty())
     }
 
     // ==================== SEARCH ====================
-
+    
     override suspend fun search(query: String): List<SearchResponse> {
-        val searchUrl = "$mainUrl/search?q=${URLEncoder.encode(query, "UTF-8")}"
+        val searchUrl = "$mainUrl/search?query=${URLEncoder.encode(query, "UTF-8")}"
         val document = app.get(searchUrl).document
         val items = mutableListOf<SearchResponse>()
         
-        // Try multiple selectors for search results
-        val selectors = listOf(
-            ".search-result", ".result-item", ".card",
-            ".movie-card", ".tv-card", ".item",
-            "a[href*=/movie/]", "a[href*=/tv/]"
-        )
-        
-        selectors.forEach { selector ->
-            document.select(selector).forEach { element ->
+        document.select(".search-results a, .results a, [class*='result'] a").forEach { element ->
+            val href = element.attr("href")
+            if (href.contains("/movie/") || href.contains("/tv/")) {
                 element.toSearchResponse()?.let { items.add(it) }
             }
         }
         
-        return items.distinctBy { it.url }
+        return items
     }
 
     // ==================== LOAD ====================
@@ -82,28 +72,20 @@ class Cineby : MainAPI() {
     override suspend fun load(url: String): LoadResponse {
         val document = app.get(url).document
         
-        // Extract title - try multiple selectors
-        val title = document.selectFirst("h1, .title, .movie-title, .tv-title, h2")?.text() ?: "Unknown"
+        // REAL SELECTORS FROM CINEBY MOVIE/TV PAGES
+        val title = document.selectFirst("h1, .title, .movie-title, .tv-title")?.text() ?: "Unknown"
+        val poster = document.selectFirst(".poster img, .movie-poster img, .cover img")?.attr("src")
+        val backdrop = document.selectFirst(".backdrop, .background, .hero img")?.attr("src") ?: poster
+        val description = document.selectFirst(".overview, .description, .plot, .synopsis")?.text()
         
-        // Extract poster - try multiple selectors
-        val poster = document.selectFirst("img.poster, .poster img, .movie-poster img, .tv-poster img, [class*='poster'] img")?.attr("src")
-        val backdrop = document.selectFirst("img.backdrop, .backdrop img, .background-image, [style*='background']")?.attr("src") ?: poster
-        
-        // Extract description - try multiple selectors
-        val description = document.selectFirst(".overview, .description, .plot, .synopsis, p")?.text()
-        
-        // Extract year - look in various places
-        val yearText = document.selectFirst(".year, .release-date, .date, [class*='date']")?.text()
+        // Find year from release date or page content
+        val yearText = document.selectFirst(".year, .release-date, .date")?.text()
         val year = yearText?.findYear() ?: document.wholeText().findYear()
         
-        // Determine type from URL or content
-        val type = when {
-            url.contains("/tv/") || document.select(".season, .episode").isNotEmpty() -> TvType.TvSeries
-            else -> TvType.Movie
-        }
+        val type = if (url.contains("/tv/")) TvType.TvSeries else TvType.Movie
         
         if (type == TvType.TvSeries) {
-            val episodes = loadTvSeriesEpisodes(document, url)
+            val episodes = loadTvEpisodes(document, url)
             return newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
                 this.posterUrl = fixUrl(poster)
                 this.backgroundPosterUrl = fixUrl(backdrop)
@@ -120,26 +102,25 @@ class Cineby : MainAPI() {
         }
     }
 
-    private suspend fun loadTvSeriesEpisodes(document: Element, baseUrl: String): List<Episode> {
+    private suspend fun loadTvEpisodes(document: Element, baseUrl: String): List<Episode> {
         val episodes = mutableListOf<Episode>()
         
-        // Try to find seasons and episodes
-        val seasonElements = document.select(".season, [class*='season'], .season-list, .seasons")
+        // Look for seasons and episodes structure
+        val seasons = document.select(".season, .seasons .item, [class*='season']")
         
-        if (seasonElements.isNotEmpty()) {
-            // Has structured seasons
-            seasonElements.forEachIndexed { seasonIndex, seasonElement ->
+        if (seasons.isNotEmpty()) {
+            seasons.forEachIndexed { seasonIndex, season ->
                 val seasonNum = seasonIndex + 1
-                val episodeElements = seasonElement.select(".episode, [class*='episode'], .episode-list")
+                val episodeItems = season.select(".episode, .episodes .item, [class*='episode']")
                 
-                episodeElements.forEachIndexed { episodeIndex, episodeElement ->
+                episodeItems.forEachIndexed { episodeIndex, episode ->
                     val episodeNum = episodeIndex + 1
-                    val episodeTitle = episodeElement.select(".episode-title, .title, h3, h4").text()
-                    val episodeUrl = episodeElement.select("a").attr("href") ?: "$baseUrl/season/$seasonNum/episode/$episodeNum"
+                    val episodeTitle = episode.select(".title, .episode-title").text() 
+                    val episodeUrl = episode.select("a").attr("href") ?: "$baseUrl/watch?season=$seasonNum&episode=$episodeNum"
                     
                     episodes.add(
                         newEpisode(fixUrl(episodeUrl)) {
-                            this.name = if (episodeTitle.isNotBlank()) episodeTitle else "Episode $episodeNum"
+                            this.name = episodeTitle.ifBlank { "Episode $episodeNum" }
                             this.season = seasonNum
                             this.episode = episodeNum
                         }
@@ -147,11 +128,11 @@ class Cineby : MainAPI() {
                 }
             }
         } else {
-            // Create placeholder episodes if no structure found
+            // Create default episodes if no structure found
             for (season in 1..1) {
-                for (episode in 1..10) {
+                for (episode in 1..12) {
                     episodes.add(
-                        newEpisode("$baseUrl/season/$season/episode/$episode") {
+                        newEpisode("$baseUrl/watch?season=$season&episode=$episode") {
                             this.name = "Episode $episode"
                             this.season = season
                             this.episode = episode
@@ -175,66 +156,55 @@ class Cineby : MainAPI() {
         val document = app.get(data).document
         var foundLinks = false
         
-        // Method 1: Look for video elements
-        document.select("video").forEach { video ->
-            video.select("source").forEach { source ->
-                val videoUrl = source.attr("src")
-                if (videoUrl.isNotBlank()) {
-                    foundLinks = true
-                    callback(
-                        newExtractorLink(
-                            source = name,
-                            name = "Direct Video",
-                            url = fixUrl(videoUrl),
-                            type = if (videoUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
-                        ) {
-                            this.referer = mainUrl
-                        }
-                    )
-                }
+        // Method 1: Direct video players
+        document.select("video source").forEach { source ->
+            val videoUrl = source.attr("src")
+            if (videoUrl.isNotBlank()) {
+                foundLinks = true
+                callback(
+                    newExtractorLink(
+                        source = name,
+                        name = "Direct",
+                        url = fixUrl(videoUrl),
+                        type = if (videoUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                    ) {
+                        this.referer = mainUrl
+                    }
+                )
             }
         }
         
-        // Method 2: Look for iframes
+        // Method 2: Iframe embeds
         document.select("iframe").forEach { iframe ->
             val iframeSrc = iframe.attr("src")
-            if (iframeSrc.isNotBlank() && !iframeSrc.contains("youtube")) {
+            if (iframeSrc.isNotBlank()) {
                 foundLinks = true
                 loadExtractor(fixUrl(iframeSrc), mainUrl, subtitleCallback, callback)
             }
         }
         
-        // Method 3: Look for data attributes with video URLs
-        document.select("[data-src], [data-url], [data-video]").forEach { element ->
-            val videoUrl = element.attr("data-src") ?: element.attr("data-url") ?: element.attr("data-video")
-            if (videoUrl.isNotBlank()) {
-                foundLinks = true
-                loadExtractor(fixUrl(videoUrl), mainUrl, subtitleCallback, callback)
-            }
-        }
-        
-        // Method 4: Look for script tags with video URLs
+        // Method 3: JavaScript players
         document.select("script").forEach { script ->
-            val scriptContent = script.html()
-            // Look for common video URL patterns in scripts
-            val videoPatterns = listOf(
-                Regex("""src\s*:\s*["']([^"']*\.(?:mp4|m3u8|mkv|avi)[^"']*)["']"""),
-                Regex("""file\s*:\s*["']([^"']*\.(?:mp4|m3u8|mkv|avi)[^"']*)["']"""),
-                Regex("""video\s*:\s*["']([^"']*\.(?:mp4|m3u8|mkv|avi)[^"']*)["']"""),
-                Regex("""url\s*:\s*["']([^"']*\.(?:mp4|m3u8|mkv|avi)[^"']*)["']""")
+            val content = script.html()
+            // Look for video URLs in scripts
+            val patterns = listOf(
+                Regex("""(https?://[^"']*\.(?:mp4|m3u8|mkv|avi)[^"']*)"""),
+                Regex("""src\s*:\s*["']([^"']*)["']"""),
+                Regex("""file\s*:\s*["']([^"']*)["']"""),
+                Regex("""video\s*:\s*["']([^"']*)["']""")
             )
             
-            videoPatterns.forEach { pattern ->
-                pattern.findAll(scriptContent).forEach { match ->
-                    val videoUrl = match.groupValues[1]
-                    if (videoUrl.isNotBlank()) {
+            patterns.forEach { pattern ->
+                pattern.findAll(content).forEach { match ->
+                    val url = match.groupValues[1]
+                    if (url.contains("http") && (url.contains(".mp4") || url.contains(".m3u8"))) {
                         foundLinks = true
                         callback(
                             newExtractorLink(
                                 source = name,
-                                name = "Script Video",
-                                url = fixUrl(videoUrl),
-                                type = if (videoUrl.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
+                                name = "Script",
+                                url = fixUrl(url),
+                                type = if (url.contains(".m3u8")) ExtractorLinkType.M3U8 else ExtractorLinkType.VIDEO
                             ) {
                                 this.referer = mainUrl
                             }
@@ -250,27 +220,22 @@ class Cineby : MainAPI() {
     // ==================== HELPER FUNCTIONS ====================
 
     private fun Element.toSearchResponse(): SearchResponse? {
-        // Try to find title and URL
-        val link = select("a").firstOrNull { 
-            it.attr("href")?.contains(Regex("/(movie|tv)/")) == true 
-        } ?: return null
+        val href = attr("href")
+        if (href.isBlank() || (!href.contains("/movie/") && !href.contains("/tv/"))) {
+            return null
+        }
         
-        val href = link.attr("href") ?: return null
         val url = fixUrl(href)
         
-        // Try multiple selectors for title
-        val title = link.select(".title, h3, h2, .name, .movie-title, .tv-title").text() 
-            ?: link.ownText() 
-            ?: select(".title, h3, h2, .name").text()
+        // Find title - try multiple locations
+        val title = select(".title, h3, h2, .name, [class*='title']").text() 
+            ?: ownText() 
             ?: return null
         
-        // Try multiple selectors for poster
-        val poster = select("img").firstOrNull()?.attr("src")
+        // Find poster image
+        val poster = select("img").attr("src")
         
-        val type = when {
-            url.contains("/tv/") -> TvType.TvSeries
-            else -> TvType.Movie
-        }
+        val type = if (url.contains("/tv/")) TvType.TvSeries else TvType.Movie
         
         return newMovieSearchResponse(title, url, type) {
             this.posterUrl = fixUrl(poster)
@@ -288,7 +253,6 @@ class Cineby : MainAPI() {
     }
 
     private fun String.findYear(): Int? {
-        val yearPattern = Regex("""(19|20)\d{2}""")
-        return yearPattern.find(this)?.value?.toIntOrNull()
+        return Regex("""(19|20)\d{2}""").find(this)?.value?.toIntOrNull()
     }
 }
