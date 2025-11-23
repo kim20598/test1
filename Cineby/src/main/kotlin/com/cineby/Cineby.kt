@@ -4,7 +4,6 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import java.net.URLEncoder
-import kotlin.time.Duration.Companion.milliseconds
 
 class Cineby : MainAPI() {
     override var mainUrl = "https://www.cineby.gd"
@@ -15,11 +14,6 @@ class Cineby : MainAPI() {
         TvType.Movie,
         TvType.TvSeries
     )
-    
-    // Extension metadata
-    override val version = 1
-    override val versionString = "1.0.0"
-    override val requiresResources = false
 
     // ==================== DATA CLASSES ====================
     
@@ -126,7 +120,7 @@ class Cineby : MainAPI() {
                 // Provider content doesn't typically paginate well
                 if (page > 1) emptyList() else {
                     // Get the page data (this would be from the API endpoint)
-                    val response = safeGet("$mainUrl/api/home").text
+                    val response = app.get("$mainUrl/api/home").text
                     val data = parseJson<HomePageProps>(response)
                     
                     // Find the specific provider
@@ -139,7 +133,7 @@ class Cineby : MainAPI() {
             }
             // For other categories
             else -> {
-                val response = safeGet("$mainUrl/api/${request.data}?page=$page").text
+                val response = app.get("$mainUrl/api/${request.data}?page=$page").text
                 val data = parseJson<PageData>(response)
                 
                 when (request.data) {
@@ -164,7 +158,7 @@ class Cineby : MainAPI() {
 
     override suspend fun search(query: String): List<SearchResponse> {
         val searchUrl = "$mainUrl/api/search?q=${URLEncoder.encode(query, "UTF-8")}"
-        val response = safeGet(searchUrl).text
+        val response = app.get(searchUrl).text
         val data = parseJson<PageData>(response)
         
         return data.results?.map { it.toSearchResponse() } ?: emptyList()
@@ -173,11 +167,6 @@ class Cineby : MainAPI() {
     // ==================== LOAD ====================
 
     override suspend fun load(url: String): LoadResponse {
-        // Validate URL first
-        if (!validateUrl(url)) {
-            throw ErrorLoadingException("Invalid URL format")
-        }
-        
         return try {
             // Extract ID and type from URL
             val mediaType = when {
@@ -188,7 +177,7 @@ class Cineby : MainAPI() {
             val mediaId = url.substringAfterLast("/").substringBefore("?")
             
             // Get media details
-            val response = safeGet("$mainUrl/api/$mediaType/$mediaId").text
+            val response = app.get("$mainUrl/api/$mediaType/$mediaId").text
             val data = parseJson<PageData>(response)
             val media = data.media ?: throw ErrorLoadingException("Media not found")
             
@@ -209,7 +198,7 @@ class Cineby : MainAPI() {
                     
                     try {
                         val episodesUrl = "$mainUrl/api/tv/$mediaId/season/${season.season_number}"
-                        val episodesResponse = safeGet(episodesUrl).parsedSafe<EpisodesResponse>()
+                        val episodesResponse = app.get(episodesUrl).parsedSafe<EpisodesResponse>()
                         
                         episodesResponse?.episodes?.forEach { ep ->
                             episodes.add(
@@ -267,11 +256,6 @@ class Cineby : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        // Validate URL first
-        if (!validateUrl(data)) {
-            return false
-        }
-        
         // Extract media info from URL
         val mediaType = when {
             data.contains("/tv/") -> "tv"
@@ -300,7 +284,7 @@ class Cineby : MainAPI() {
         }
         
         // Get the embed page
-        val embedDoc = safeGet(embedUrl).document
+        val embedDoc = app.get(embedUrl).document
         var foundLinks = false
         
         // Method 1: Look for iframe embeds
@@ -316,16 +300,13 @@ class Cineby : MainAPI() {
         embedDoc.select("script").forEach { script ->
             val content = script.html()
             
-            // Extract from scripts using multiple patterns
-            extractFromScripts(content, embedUrl, callback)
-            
             // Look for API calls
             if (content.contains("/api/source/") || content.contains("/api/embed/")) {
                 val sourcePattern = Regex("""['"](/api/(?:source|embed)/[^'"]+)['"]""")
                 sourcePattern.findAll(content).forEach { match ->
                     val apiUrl = fixUrl(match.groupValues[1])
                     try {
-                        val apiResponse = safeGet(apiUrl).parsedSafe<SourceResponse>()
+                        val apiResponse = app.get(apiUrl).parsedSafe<SourceResponse>()
                         apiResponse?.sources?.forEach { source ->
                             foundLinks = true
                             callback(
@@ -361,11 +342,11 @@ class Cineby : MainAPI() {
         if (!foundLinks) {
             val serversUrl = "$mainUrl/api/servers/$mediaType/$mediaId"
             try {
-                val serversResponse = safeGet(serversUrl).parsedSafe<ServersResponse>()
+                val serversResponse = app.get(serversUrl).parsedSafe<ServersResponse>()
                 serversResponse?.servers?.forEach { server ->
                     val serverUrl = "$mainUrl/api/source/${server.id}"
                     try {
-                        val sourceResponse = safeGet(serverUrl).parsedSafe<SourceResponse>()
+                        val sourceResponse = app.get(serverUrl).parsedSafe<SourceResponse>()
                         sourceResponse?.sources?.forEach { source ->
                             foundLinks = true
                             callback(
@@ -399,13 +380,10 @@ class Cineby : MainAPI() {
     // ==================== HELPER FUNCTIONS ====================
 
     private fun MediaItem.toSearchResponse(): SearchResponse {
-        require(id > 0) { "Invalid media ID" }
-        require(title.isNotBlank()) { "Title cannot be blank" }
-        
         val url = when (mediaType) {
             "tv" -> "$mainUrl/tv/$id"
             else -> "$mainUrl/movie/$id"
-        }.also { require(it.isNotBlank()) { "URL cannot be blank" } }
+        }
         
         val type = when (mediaType) {
             "tv" -> TvType.TvSeries
@@ -439,43 +417,6 @@ class Cineby : MainAPI() {
             quality.contains("hd", true) -> Qualities.P720.value
             quality.contains("sd", true) -> Qualities.P480.value
             else -> Qualities.Unknown.value
-        }
-    }
-
-    private fun validateUrl(url: String): Boolean {
-        return url.startsWith(mainUrl) && (url.contains("/movie/") || url.contains("/tv/"))
-    }
-
-    private suspend fun safeGet(url: String): Response {
-        delay(500) // Prevent rate limiting
-        return app.get(url)
-    }
-
-    private suspend fun extractFromScripts(scriptContent: String, embedUrl: String, callback: (ExtractorLink) -> Unit) {
-        val patterns = listOf(
-            Regex("""src\s*=\s*['"]([^'"]*\.m3u8[^'"]*)['"]""", RegexOption.IGNORE_CASE),
-            Regex("""file\s*:\s*['"]([^'"]*\.m3u8[^'"]*)['"]""", RegexOption.IGNORE_CASE),
-            Regex("""video\s*:\s*['"]([^'"]*\.m3u8[^'"]*)['"]""", RegexOption.IGNORE_CASE),
-            Regex("""source\s*:\s*['"]([^'"]*\.m3u8[^'"]*)['"]""", RegexOption.IGNORE_CASE)
-        )
-        
-        patterns.forEach { pattern ->
-            pattern.findAll(scriptContent).forEach { match ->
-                val videoUrl = fixUrl(match.groupValues[1])
-                if (videoUrl.isNotBlank() && videoUrl.contains(".m3u8")) {
-                    callback(
-                        newExtractorLink(
-                            source = name,
-                            name = "Direct Stream",
-                            url = videoUrl,
-                            type = ExtractorLinkType.M3U8
-                        ) {
-                            this.referer = embedUrl
-                            this.quality = Qualities.P720.value
-                        }
-                    )
-                }
-            }
         }
     }
 
