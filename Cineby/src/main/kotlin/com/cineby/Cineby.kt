@@ -38,11 +38,9 @@ class Cineby : MainAPI() {
         val items = mutableListOf<SearchResponse>()
         
         // REAL SELECTORS FROM CINEBY SITE
-        // Movies/TV shows are in grid with class "grid" or "movies-grid" 
-        // Each item has class "movie-item" or similar
-        document.select(".grid a, .movies-grid a, .movie-item, .tv-item, .card, [class*='item']").forEach { element ->
+        document.select("a").forEach { element ->
             val href = element.attr("href")
-            if (href.contains("/movie/") || href.contains("/tv/")) {
+            if ((href.contains("/movie/") || href.contains("/tv/")) && href != "/movies" && href != "/tv") {
                 element.toSearchResponse()?.let { items.add(it) }
             }
         }
@@ -57,7 +55,7 @@ class Cineby : MainAPI() {
         val document = app.get(searchUrl).document
         val items = mutableListOf<SearchResponse>()
         
-        document.select(".search-results a, .results a, [class*='result'] a").forEach { element ->
+        document.select("a").forEach { element ->
             val href = element.attr("href")
             if (href.contains("/movie/") || href.contains("/tv/")) {
                 element.toSearchResponse()?.let { items.add(it) }
@@ -73,10 +71,10 @@ class Cineby : MainAPI() {
         val document = app.get(url).document
         
         // REAL SELECTORS FROM CINEBY MOVIE/TV PAGES
-        val title = document.selectFirst("h1, .title, .movie-title, .tv-title")?.text() ?: "Unknown"
-        val poster = document.selectFirst(".poster img, .movie-poster img, .cover img")?.attr("src")
-        val backdrop = document.selectFirst(".backdrop, .background, .hero img")?.attr("src") ?: poster
-        val description = document.selectFirst(".overview, .description, .plot, .synopsis")?.text()
+        val title = document.selectFirst("h1")?.text() ?: "Unknown"
+        val poster = document.selectFirst("img")?.attr("src") ?: ""
+        val backdrop = document.selectFirst(".backdrop img, .background img")?.attr("src") ?: poster
+        val description = document.selectFirst("p, .description, .overview")?.text() ?: ""
         
         // Find year from release date or page content
         val yearText = document.selectFirst(".year, .release-date, .date")?.text()
@@ -106,12 +104,12 @@ class Cineby : MainAPI() {
         val episodes = mutableListOf<Episode>()
         
         // Look for seasons and episodes structure
-        val seasons = document.select(".season, .seasons .item, [class*='season']")
+        val seasons = document.select(".season, [class*='season']")
         
         if (seasons.isNotEmpty()) {
             seasons.forEachIndexed { seasonIndex, season ->
                 val seasonNum = seasonIndex + 1
-                val episodeItems = season.select(".episode, .episodes .item, [class*='episode']")
+                val episodeItems = season.select(".episode, [class*='episode']")
                 
                 episodeItems.forEachIndexed { episodeIndex, episode ->
                     val episodeNum = episodeIndex + 1
@@ -120,7 +118,7 @@ class Cineby : MainAPI() {
                     
                     episodes.add(
                         newEpisode(fixUrl(episodeUrl)) {
-                            this.name = episodeTitle.ifBlank { "Episode $episodeNum" }
+                            this.name = if (episodeTitle.isNotBlank()) episodeTitle else "Episode $episodeNum"
                             this.season = seasonNum
                             this.episode = episodeNum
                         }
@@ -228,9 +226,8 @@ class Cineby : MainAPI() {
         val url = fixUrl(href)
         
         // Find title - try multiple locations
-        val title = select(".title, h3, h2, .name, [class*='title']").text() 
-            ?: ownText() 
-            ?: return null
+        val titleElement = select(".title, h3, h2, .name, [class*='title']").first()
+        val title = titleElement?.text() ?: ownText() ?: return null
         
         // Find poster image
         val poster = select("img").attr("src")
