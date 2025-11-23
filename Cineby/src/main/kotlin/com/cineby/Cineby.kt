@@ -6,7 +6,7 @@ import org.jsoup.nodes.Element
 import java.net.URLEncoder
 
 class Cineby : MainAPI() {
-    override var mainUrl = "https://www.cineby.gd"
+    override var mainUrl = "https://cineby.gd"
     override var name = "Cineby"
     override val hasMainPage = true
     override var lang = "en"
@@ -253,3 +253,4 @@ class Cineby : MainAPI() {
         return Regex("""(19|20)\d{2}""").find(this)?.value?.toIntOrNull()
     }
 }
+
