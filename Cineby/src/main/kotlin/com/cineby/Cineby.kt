@@ -4,6 +4,7 @@ import com.lagradost.cloudstream3.*
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.cloudstream3.utils.AppUtils.parseJson
 import java.net.URLEncoder
+import kotlin.time.Duration.Companion.milliseconds
 
 class Cineby : MainAPI() {
     override var mainUrl = "https://www.cineby.gd"
@@ -14,6 +15,11 @@ class Cineby : MainAPI() {
         TvType.Movie,
         TvType.TvSeries
     )
+    
+    // Extension metadata
+    override val version = 1
+    override val versionString = "1.0.0"
+    override val requiresResources = false
 
     // ==================== DATA CLASSES ====================
     
@@ -117,20 +123,23 @@ class Cineby : MainAPI() {
         val items = when (request.data) {
             // For provider categories
             "netflix", "disney", "hbo", "appletv", "paramount" -> {
-                // Get the page data (this would be from the API endpoint)
-                val response = app.get("$mainUrl/api/home").text
-                val data = parseJson<HomePageProps>(response)
-                
-                // Find the specific provider
-                data.pageProps.initialData.data.providers
-                    ?.find { it.name == request.data }
-                    ?.movies
-                    ?.map { it.toSearchResponse() }
-                    ?: emptyList()
+                // Provider content doesn't typically paginate well
+                if (page > 1) emptyList() else {
+                    // Get the page data (this would be from the API endpoint)
+                    val response = safeGet("$mainUrl/api/home").text
+                    val data = parseJson<HomePageProps>(response)
+                    
+                    // Find the specific provider
+                    data.pageProps.initialData.data.providers
+                        ?.find { it.name == request.data }
+                        ?.movies
+                        ?.map { it.toSearchResponse() }
+                        ?: emptyList()
+                }
             }
             // For other categories
             else -> {
-                val response = app.get("$mainUrl/api/${request.data}?page=$page").text
+                val response = safeGet("$mainUrl/api/${request.data}?page=$page").text
                 val data = parseJson<PageData>(response)
                 
                 when (request.data) {
@@ -142,14 +151,20 @@ class Cineby : MainAPI() {
             }
         }
         
-        return newHomePageResponse(request.name, items, hasNext = items.size >= 20)
+        // More accurate hasNext calculation
+        val hasNext = when (request.data) {
+            in listOf("netflix", "disney", "hbo", "appletv", "paramount") -> false
+            else -> items.size >= 20
+        }
+        
+        return newHomePageResponse(request.name, items, hasNext = hasNext)
     }
 
     // ==================== SEARCH ====================
 
     override suspend fun search(query: String): List<SearchResponse> {
         val searchUrl = "$mainUrl/api/search?q=${URLEncoder.encode(query, "UTF-8")}"
-        val response = app.get(searchUrl).text
+        val response = safeGet(searchUrl).text
         val data = parseJson<PageData>(response)
         
         return data.results?.map { it.toSearchResponse() } ?: emptyList()
@@ -158,80 +173,89 @@ class Cineby : MainAPI() {
     // ==================== LOAD ====================
 
     override suspend fun load(url: String): LoadResponse {
-        // Extract ID and type from URL
-        val mediaType = when {
-            url.contains("/tv/") -> "tv"
-            url.contains("/movie/") -> "movie"
-            else -> "movie"
+        // Validate URL first
+        if (!validateUrl(url)) {
+            throw ErrorLoadingException("Invalid URL format")
         }
-        val mediaId = url.substringAfterLast("/").substringBefore("?")
         
-        // Get media details
-        val response = app.get("$mainUrl/api/$mediaType/$mediaId").text
-        val data = parseJson<PageData>(response)
-        val media = data.media ?: throw ErrorLoadingException("Media not found")
-        
-        val title = media.title ?: media.name ?: "Unknown"
-        val posterUrl = media.poster_path?.let { 
-            if (it.startsWith("http")) it else "https://image.tmdb.org/t/p/w500$it" 
-        } ?: ""
-        val backdropUrl = media.backdrop_path?.let { 
-            if (it.startsWith("http")) it else "https://image.tmdb.org/t/p/original$it" 
-        } ?: ""
-        
-        return if (mediaType == "tv" && media.seasons != null) {
-            val episodes = mutableListOf<com.lagradost.cloudstream3.Episode>()
+        return try {
+            // Extract ID and type from URL
+            val mediaType = when {
+                url.contains("/tv/") -> "tv"
+                url.contains("/movie/") -> "movie"
+                else -> "movie"
+            }
+            val mediaId = url.substringAfterLast("/").substringBefore("?")
             
-            // For each season, fetch episodes
-            media.seasons.forEach { season ->
-                if (season.season_number == 0) return@forEach // Skip specials
+            // Get media details
+            val response = safeGet("$mainUrl/api/$mediaType/$mediaId").text
+            val data = parseJson<PageData>(response)
+            val media = data.media ?: throw ErrorLoadingException("Media not found")
+            
+            val title = media.title ?: media.name ?: "Unknown"
+            val posterUrl = media.poster_path?.let { 
+                if (it.startsWith("http")) it else "https://image.tmdb.org/t/p/w500$it" 
+            } ?: ""
+            val backdropUrl = media.backdrop_path?.let { 
+                if (it.startsWith("http")) it else "https://image.tmdb.org/t/p/original$it" 
+            } ?: ""
+            
+            if (mediaType == "tv" && media.seasons != null) {
+                val episodes = mutableListOf<com.lagradost.cloudstream3.Episode>()
                 
-                try {
-                    val episodesUrl = "$mainUrl/api/tv/$mediaId/season/${season.season_number}"
-                    val episodesResponse = app.get(episodesUrl).parsedSafe<EpisodesResponse>()
+                // For each season, fetch episodes
+                media.seasons.forEach { season ->
+                    if (season.season_number == 0) return@forEach // Skip specials
                     
-                    episodesResponse?.episodes?.forEach { ep ->
-                        episodes.add(
-                            newEpisode("$mainUrl/tv/$mediaId/${season.season_number}/${ep.episode_number}") {
-                                this.name = ep.name
-                                this.season = season.season_number
-                                this.episode = ep.episode_number
-                                this.description = ep.overview
-                            }
-                        )
-                    }
-                } catch (e: Exception) {
-                    // If API fails, create placeholder episodes
-                    for (i in 1..season.episode_count) {
-                        episodes.add(
-                            newEpisode("$mainUrl/tv/$mediaId/${season.season_number}/$i") {
-                                this.name = "Episode $i"
-                                this.season = season.season_number
-                                this.episode = i
-                            }
-                        )
+                    try {
+                        val episodesUrl = "$mainUrl/api/tv/$mediaId/season/${season.season_number}"
+                        val episodesResponse = safeGet(episodesUrl).parsedSafe<EpisodesResponse>()
+                        
+                        episodesResponse?.episodes?.forEach { ep ->
+                            episodes.add(
+                                newEpisode("$mainUrl/tv/$mediaId/${season.season_number}/${ep.episode_number}") {
+                                    this.name = ep.name
+                                    this.season = season.season_number
+                                    this.episode = ep.episode_number
+                                    this.description = ep.overview
+                                }
+                            )
+                        }
+                    } catch (e: Exception) {
+                        // If API fails, create placeholder episodes
+                        for (i in 1..season.episode_count) {
+                            episodes.add(
+                                newEpisode("$mainUrl/tv/$mediaId/${season.season_number}/$i") {
+                                    this.name = "Episode $i"
+                                    this.season = season.season_number
+                                    this.episode = i
+                                }
+                            )
+                        }
                     }
                 }
+                
+                newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
+                    this.posterUrl = posterUrl
+                    this.backgroundPosterUrl = backdropUrl
+                    this.plot = media.overview
+                    this.tags = media.genres?.map { it.name }
+                    this.year = (media.first_air_date ?: media.release_date)?.take(4)?.toIntOrNull()
+                    // REMOVED: Rating/score assignment - not needed
+                }
+            } else {
+                newMovieLoadResponse(title, url, TvType.Movie, url) {
+                    this.posterUrl = posterUrl
+                    this.backgroundPosterUrl = backdropUrl
+                    this.plot = media.overview
+                    this.tags = media.genres?.map { it.name }
+                    this.year = media.release_date?.take(4)?.toIntOrNull()
+                    this.duration = media.runtime
+                    // REMOVED: Rating/score assignment - not needed
+                }
             }
-            
-            newTvSeriesLoadResponse(title, url, TvType.TvSeries, episodes) {
-                this.posterUrl = posterUrl
-                this.backgroundPosterUrl = backdropUrl
-                this.plot = media.overview
-                this.tags = media.genres?.map { it.name }
-                this.year = (media.first_air_date ?: media.release_date)?.take(4)?.toIntOrNull()
-                // REMOVED: Rating/score assignment - not needed
-            }
-        } else {
-            newMovieLoadResponse(title, url, TvType.Movie, url) {
-                this.posterUrl = posterUrl
-                this.backgroundPosterUrl = backdropUrl
-                this.plot = media.overview
-                this.tags = media.genres?.map { it.name }
-                this.year = media.release_date?.take(4)?.toIntOrNull()
-                this.duration = media.runtime
-                // REMOVED: Rating/score assignment - not needed
-            }
+        } catch (e: Exception) {
+            throw ErrorLoadingException("Failed to load media: ${e.message}")
         }
     }
 
@@ -243,6 +267,11 @@ class Cineby : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
+        // Validate URL first
+        if (!validateUrl(data)) {
+            return false
+        }
+        
         // Extract media info from URL
         val mediaType = when {
             data.contains("/tv/") -> "tv"
@@ -271,7 +300,7 @@ class Cineby : MainAPI() {
         }
         
         // Get the embed page
-        val embedDoc = app.get(embedUrl).document
+        val embedDoc = safeGet(embedUrl).document
         var foundLinks = false
         
         // Method 1: Look for iframe embeds
@@ -287,13 +316,16 @@ class Cineby : MainAPI() {
         embedDoc.select("script").forEach { script ->
             val content = script.html()
             
+            // Extract from scripts using multiple patterns
+            extractFromScripts(content, embedUrl, callback)
+            
             // Look for API calls
             if (content.contains("/api/source/") || content.contains("/api/embed/")) {
                 val sourcePattern = Regex("""['"](/api/(?:source|embed)/[^'"]+)['"]""")
                 sourcePattern.findAll(content).forEach { match ->
                     val apiUrl = fixUrl(match.groupValues[1])
                     try {
-                        val apiResponse = app.get(apiUrl).parsedSafe<SourceResponse>()
+                        val apiResponse = safeGet(apiUrl).parsedSafe<SourceResponse>()
                         apiResponse?.sources?.forEach { source ->
                             foundLinks = true
                             callback(
@@ -329,11 +361,11 @@ class Cineby : MainAPI() {
         if (!foundLinks) {
             val serversUrl = "$mainUrl/api/servers/$mediaType/$mediaId"
             try {
-                val serversResponse = app.get(serversUrl).parsedSafe<ServersResponse>()
+                val serversResponse = safeGet(serversUrl).parsedSafe<ServersResponse>()
                 serversResponse?.servers?.forEach { server ->
                     val serverUrl = "$mainUrl/api/source/${server.id}"
                     try {
-                        val sourceResponse = app.get(serverUrl).parsedSafe<SourceResponse>()
+                        val sourceResponse = safeGet(serverUrl).parsedSafe<SourceResponse>()
                         sourceResponse?.sources?.forEach { source ->
                             foundLinks = true
                             callback(
@@ -367,10 +399,13 @@ class Cineby : MainAPI() {
     // ==================== HELPER FUNCTIONS ====================
 
     private fun MediaItem.toSearchResponse(): SearchResponse {
+        require(id > 0) { "Invalid media ID" }
+        require(title.isNotBlank()) { "Title cannot be blank" }
+        
         val url = when (mediaType) {
             "tv" -> "$mainUrl/tv/$id"
             else -> "$mainUrl/movie/$id"
-        }
+        }.also { require(it.isNotBlank()) { "URL cannot be blank" } }
         
         val type = when (mediaType) {
             "tv" -> TvType.TvSeries
@@ -396,12 +431,51 @@ class Cineby : MainAPI() {
 
     private fun getQualityFromString(quality: String): Int {
         return when {
-            quality.contains("4K") || quality.contains("2160") -> Qualities.P2160.value
-            quality.contains("1080") -> Qualities.P1080.value
-            quality.contains("720") -> Qualities.P720.value
-            quality.contains("480") -> Qualities.P480.value
-            quality.contains("360") -> Qualities.P360.value
+            quality.contains("4k", true) || quality.contains("2160", true) -> Qualities.P2160.value
+            quality.contains("1080", true) -> Qualities.P1080.value
+            quality.contains("720", true) -> Qualities.P720.value
+            quality.contains("480", true) -> Qualities.P480.value
+            quality.contains("360", true) -> Qualities.P360.value
+            quality.contains("hd", true) -> Qualities.P720.value
+            quality.contains("sd", true) -> Qualities.P480.value
             else -> Qualities.Unknown.value
+        }
+    }
+
+    private fun validateUrl(url: String): Boolean {
+        return url.startsWith(mainUrl) && (url.contains("/movie/") || url.contains("/tv/"))
+    }
+
+    private suspend fun safeGet(url: String): Response {
+        delay(500) // Prevent rate limiting
+        return app.get(url)
+    }
+
+    private suspend fun extractFromScripts(scriptContent: String, embedUrl: String, callback: (ExtractorLink) -> Unit) {
+        val patterns = listOf(
+            Regex("""src\s*=\s*['"]([^'"]*\.m3u8[^'"]*)['"]""", RegexOption.IGNORE_CASE),
+            Regex("""file\s*:\s*['"]([^'"]*\.m3u8[^'"]*)['"]""", RegexOption.IGNORE_CASE),
+            Regex("""video\s*:\s*['"]([^'"]*\.m3u8[^'"]*)['"]""", RegexOption.IGNORE_CASE),
+            Regex("""source\s*:\s*['"]([^'"]*\.m3u8[^'"]*)['"]""", RegexOption.IGNORE_CASE)
+        )
+        
+        patterns.forEach { pattern ->
+            pattern.findAll(scriptContent).forEach { match ->
+                val videoUrl = fixUrl(match.groupValues[1])
+                if (videoUrl.isNotBlank() && videoUrl.contains(".m3u8")) {
+                    callback(
+                        newExtractorLink(
+                            source = name,
+                            name = "Direct Stream",
+                            url = videoUrl,
+                            type = ExtractorLinkType.M3U8
+                        ) {
+                            this.referer = embedUrl
+                            this.quality = Qualities.P720.value
+                        }
+                    )
+                }
+            }
         }
     }
 
