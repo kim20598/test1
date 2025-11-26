@@ -98,7 +98,6 @@ class AnimeSuge : MainAPI() {
         val status = when (statusText?.lowercase()) {
             "completed", "finished" -> ShowStatus.Completed
             "ongoing", "releasing", "airing" -> ShowStatus.Ongoing
-            "upcoming" -> ShowStatus.ComingSoon
             else -> ShowStatus.Completed
         }
 
